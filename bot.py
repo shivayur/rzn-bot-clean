@@ -52,7 +52,7 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# VERIFY SYSTEM
+# VERIFY
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -93,7 +93,7 @@ async def setup_verify(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ Create 'Member' role", ephemeral=True)
 
     embed = discord.Embed(
-        title="🔐 Verify",
+        title="VERIFY",
         description="Click to get access",
         color=0x2ecc71
     )
@@ -109,7 +109,7 @@ async def setup_verify(interaction: discord.Interaction):
 async def rules(interaction: discord.Interaction):
 
     embed = discord.Embed(
-        title="📜 Rules",
+        title="RULES",
         color=0x2ecc71
     )
 
@@ -121,24 +121,24 @@ async def rules(interaction: discord.Interaction):
     await interaction.response.send_message("✅ Sent", ephemeral=True)
 
 # ─────────────────────────────
-# ADMIN APPLICATION FORM
+# ADMIN APPLICATION
 # ─────────────────────────────
 def get_admin_application_embed():
     embed = discord.Embed(
-        title="📝 Admin Application",
+        title="ADMIN APPLICATION",
         description="Please answer all questions below.",
         color=0x2ecc71
     )
 
-    embed.add_field(name="1. Username", value="Your in-game name", inline=False)
-    embed.add_field(name="2. Age", value="Your age", inline=False)
-    embed.add_field(name="3. Why admin?", value="Why do you want this role?", inline=False)
-    embed.add_field(name="4. Experience", value="Any previous staff experience?", inline=False)
-    embed.add_field(name="5. Skills", value="Why are you suitable?", inline=False)
-    embed.add_field(name="6. Situations", value="How handle rule breakers?", inline=False)
-    embed.add_field(name="7. Motivation", value="What motivates you?", inline=False)
-    embed.add_field(name="8. Responsibility", value="Do you understand staff rules?", inline=False)
-    embed.add_field(name="9. Questions", value="Any questions?", inline=False)
+    embed.add_field(name="1", value="Username", inline=False)
+    embed.add_field(name="2", value="Age", inline=False)
+    embed.add_field(name="3", value="Why admin?", inline=False)
+    embed.add_field(name="4", value="Experience", inline=False)
+    embed.add_field(name="5", value="Skills", inline=False)
+    embed.add_field(name="6", value="Situations", inline=False)
+    embed.add_field(name="7", value="Motivation", inline=False)
+    embed.add_field(name="8", value="Responsibility", inline=False)
+    embed.add_field(name="9", value="Questions", inline=False)
 
     return embed
 
@@ -149,21 +149,21 @@ class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="❌ Close Ticket", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.red)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        await interaction.response.send_message("🔒 Closing...", ephemeral=True)
+        await interaction.response.send_message("Closing...", ephemeral=True)
         await interaction.channel.delete()
 
 # ─────────────────────────────
-# TICKET SYSTEM (FIXED NO INTERACTION FAIL)
+# TICKET SYSTEM
 # ─────────────────────────────
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.select(
-        placeholder="Choose ticket type...",
+        placeholder="Choose ticket type",
         options=[
             discord.SelectOption(label="Support", emoji="🛠️"),
             discord.SelectOption(label="Report User", emoji="🚨"),
@@ -202,8 +202,8 @@ class TicketView(discord.ui.View):
             )
 
             embed = discord.Embed(
-                title=f"🎫 {ticket_type}",
-                description="Describe your issue below.",
+                title=ticket_type,
+                description="Describe your request below.",
                 color=0x2ecc71
             )
 
@@ -213,16 +213,12 @@ class TicketView(discord.ui.View):
                 await channel.send(embed=get_admin_application_embed())
 
             await interaction.followup.send(
-                f"✅ Ticket created: {channel.mention}",
+                f"Ticket created: {channel.mention}",
                 ephemeral=True
             )
 
         except Exception as e:
             print(f"TICKET ERROR: {e}")
-            try:
-                await interaction.followup.send("❌ Error occurred", ephemeral=True)
-            except:
-                pass
 
 # ─────────────────────────────
 # TICKET PANEL
@@ -234,14 +230,43 @@ async def ticket_panel(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     embed = discord.Embed(
-        title="🎫 Ticket System",
-        description="Select a ticket type below",
+        title="TICKETS",
+        description="Select a type below",
         color=0x2ecc71
     )
 
     await interaction.channel.send(embed=embed, view=TicketView())
 
     await interaction.response.send_message("✅ Sent", ephemeral=True)
+
+# ─────────────────────────────
+# /AD COMMAND
+# ─────────────────────────────
+@bot.tree.command(name="ad")
+async def ad(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="JOIN RZN",
+        description=(
+            "A Minecraft PvP and community server focused on improvement, competition, and social interaction.\n\n"
+            "WHAT RZN IS ABOUT\n"
+            "Structured community for PvP improvement and social interaction.\n\n"
+            "FEATURES\n"
+            "• PvP improvement & feedback\n"
+            "• Weekly events & tournaments\n"
+            "• Community & chill environment\n"
+            "• Ticket & verification systems\n"
+            "• Minecraft content & resources\n\n"
+            "ABOUT\n"
+            "Balanced PvP + community server.\n\n"
+            "Owned by Shivayur\n\n"
+            "Join RZN:\n"
+            "https://discord.gg/PtP7sHwKJF"
+        ),
+        color=0x2ecc71
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 # ─────────────────────────────
 # BASIC COMMANDS
@@ -264,7 +289,7 @@ async def kick(interaction: discord.Interaction, member: discord.Member, reason:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.kick(reason=reason)
-    await interaction.response.send_message(f"👢 Kicked {member}", ephemeral=True)
+    await interaction.response.send_message(f"Kicked {member}", ephemeral=True)
 
 @bot.tree.command(name="ban")
 async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
@@ -273,7 +298,7 @@ async def ban(interaction: discord.Interaction, member: discord.Member, reason: 
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.ban(reason=reason)
-    await interaction.response.send_message(f"⛔ Banned {member}", ephemeral=True)
+    await interaction.response.send_message(f"Banned {member}", ephemeral=True)
 
 @bot.tree.command(name="clear")
 async def clear(interaction: discord.Interaction, amount: int):
@@ -282,7 +307,7 @@ async def clear(interaction: discord.Interaction, amount: int):
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message(f"🧹 Deleted {amount}", ephemeral=True)
+    await interaction.response.send_message(f"Deleted {amount}", ephemeral=True)
 
 @bot.tree.command(name="warn")
 async def warn(interaction: discord.Interaction, member: discord.Member, reason: str):
@@ -290,7 +315,7 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
     if not interaction.user.guild_permissions.moderate_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
-    await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}", ephemeral=True)
+    await interaction.response.send_message(f"{member.mention} warned: {reason}", ephemeral=True)
 
 # ─────────────────────────────
 # RUN
