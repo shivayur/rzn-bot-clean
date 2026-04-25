@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+import random
 
 TOKEN = os.getenv("TOKEN")
 
@@ -30,7 +31,7 @@ async def on_ready():
         print(e)
 
 # ─────────────────────────────
-# WELCOME MESSAGE
+# WELCOME CHANNEL
 # ─────────────────────────────
 @bot.event
 async def on_member_join(member):
@@ -55,42 +56,65 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# VERIFY SYSTEM (NO SPAM FIX)
+# CAPTCHA VERIFY SYSTEM
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
         super().__init__(timeout=None)
         self.role_id = role_id
 
-    @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
-    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.emojis = ["🍎", "🍌", "🍇", "🍒", "🍉"]
+        self.correct = random.choice(self.emojis)
+
+    @discord.ui.button(label="Start Verify", style=discord.ButtonStyle.green)
+    async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        view = discord.ui.View(timeout=60)
+
+        for emoji in self.emojis:
+            view.add_item(CaptchaButton(self.role_id, self.correct, emoji))
+
+        embed = discord.Embed(
+            title="🔐 CAPTCHA VERIFY",
+            description=f"Click the correct emoji:\n\n**{self.correct}**",
+            color=0x2ecc71
+        )
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+# ─────────────────────────────
+# CAPTCHA BUTTONS
+# ─────────────────────────────
+class CaptchaButton(discord.ui.Button):
+    def __init__(self, role_id, correct, emoji):
+        super().__init__(label=emoji, style=discord.ButtonStyle.secondary)
+        self.role_id = role_id
+        self.correct = correct
+        self.emoji = emoji
+
+    async def callback(self, interaction: discord.Interaction):
+
+        await interaction.response.defer(ephemeral=True)
+
+        if self.emoji != self.correct:
+            return await interaction.followup.send("❌ Wrong emoji, try again.")
+
+        role = interaction.guild.get_role(self.role_id)
+
+        if role is None:
+            return await interaction.followup.send("❌ Role not found")
 
         try:
-            await interaction.response.defer(ephemeral=True)
-
-            role = interaction.guild.get_role(self.role_id)
-
-            if role is None:
-                return await interaction.followup.send("❌ Role not found", ephemeral=True)
-
             await interaction.user.add_roles(role)
-
-            # 🔥 ONLY USER SEES THIS
-            await interaction.followup.send(
-                "✅ You are now verified!",
-                ephemeral=True
-            )
+            await interaction.followup.send("✅ Verified successfully!")
 
         except discord.Forbidden:
-            await interaction.followup.send(
-                "❌ I cannot give roles (check permissions)",
-                ephemeral=True
-            )
+            await interaction.followup.send("❌ Missing permissions")
 
 # ─────────────────────────────
-# SETUP VERIFY
+# SETUP VERIFY COMMAND
 # ─────────────────────────────
-@bot.tree.command(name="setup_verify", description="Setup verify system")
+@bot.tree.command(name="setup_verify", description="Setup captcha verify")
 async def setup_verify(interaction: discord.Interaction):
 
     if not interaction.user.guild_permissions.administrator:
@@ -105,8 +129,8 @@ async def setup_verify(interaction: discord.Interaction):
         )
 
     embed = discord.Embed(
-        title="🔐 Verify",
-        description="Click the button to get access",
+        title="🔐 Verify System",
+        description="Click Start Verify to begin captcha",
         color=0x2ecc71
     )
 
@@ -182,10 +206,7 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
     if not interaction.user.guild_permissions.moderate_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
-    await interaction.response.send_message(
-        f"⚠️ {member.mention} warned: {reason}",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}", ephemeral=True)
 
 # ─────────────────────────────
 # RUN BOT
