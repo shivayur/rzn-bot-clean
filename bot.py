@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 
 # ─────────────────────────────
-# 🔐 TOKEN
+# 🔐 TOKEN (ENV SAFE)
 # ─────────────────────────────
 TOKEN = os.getenv("TOKEN")
 
@@ -73,7 +73,7 @@ async def post(interaction: discord.Interaction, link: str):
     await interaction.response.send_message("Posted!", ephemeral=True)
 
 # ─────────────────────────────
-# KICK
+# MODERATION
 # ─────────────────────────────
 @bot.tree.command(name="kick")
 async def kick(interaction: discord.Interaction, member: discord.Member):
@@ -84,9 +84,6 @@ async def kick(interaction: discord.Interaction, member: discord.Member):
     await member.kick()
     await interaction.response.send_message(f"Kicked {member.name}")
 
-# ─────────────────────────────
-# BAN
-# ─────────────────────────────
 @bot.tree.command(name="ban")
 async def ban(interaction: discord.Interaction, member: discord.Member):
 
@@ -96,9 +93,6 @@ async def ban(interaction: discord.Interaction, member: discord.Member):
     await member.ban()
     await interaction.response.send_message(f"Banned {member.name}")
 
-# ─────────────────────────────
-# CLEAR
-# ─────────────────────────────
 @bot.tree.command(name="clear")
 async def clear(interaction: discord.Interaction, amount: int):
 
@@ -110,35 +104,61 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.send_message(f"Cleared {amount} messages", ephemeral=True)
 
 # ─────────────────────────────
-# TIMEOUT
+# WELCOME + COUNTER SYSTEM
 # ─────────────────────────────
-@bot.tree.command(name="timeout")
-async def timeout(interaction: discord.Interaction, member: discord.Member, minutes: int):
+@bot.event
+async def on_member_join(member):
 
-    if not interaction.user.guild_permissions.moderate_members:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+    guild = member.guild
 
-    try:
-        duration = discord.utils.utcnow() + discord.timedelta(minutes=minutes)
+    # ── WELCOME CHANNEL ──
+    welcome_channel = discord.utils.get(guild.text_channels, name="welcome")
 
-        await member.edit(timed_out_until=duration)
+    if not welcome_channel:
+        welcome_channel = await guild.create_text_channel("welcome")
 
-        await interaction.response.send_message(
-            f"⏱️ {member.name} timed out for {minutes} minutes"
+    embed = discord.Embed(
+        title="👋 Welcome!",
+        description=f"Welcome {member.mention} to **{guild.name}**!",
+        color=0x2ecc71
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    await welcome_channel.send(embed=embed)
+
+    # ── MEMBER COUNTER ──
+    counter_channel = discord.utils.get(guild.voice_channels, name="👥 Members")
+
+    if not counter_channel:
+        counter_channel = await guild.create_voice_channel(
+            f"👥 Members: {guild.member_count}"
+        )
+    else:
+        await counter_channel.edit(
+            name=f"👥 Members: {guild.member_count}"
         )
 
-    except Exception as e:
-        await interaction.response.send_message(
-            f"❌ Timeout failed: {e}",
-            ephemeral=True
+# ─────────────────────────────
+# MEMBER LEAVE (COUNTER UPDATE)
+# ─────────────────────────────
+@bot.event
+async def on_member_remove(member):
+
+    guild = member.guild
+
+    counter_channel = discord.utils.get(guild.voice_channels, name="👥 Members")
+
+    if counter_channel:
+        await counter_channel.edit(
+            name=f"👥 Members: {guild.member_count}"
         )
 
 # ─────────────────────────────
-# READY
+# READY EVENT
 # ─────────────────────────────
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"{bot.user} is online (stable full moderation bot)")
+    print(f"{bot.user} is online (stable full bot)")
 
 bot.run(TOKEN)
