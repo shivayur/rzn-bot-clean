@@ -6,11 +6,12 @@ TOKEN = os.getenv("TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ─────────────────────────────
-# BOT READY + SLASH SYNC
+# BOT READY + SYNC
 # ─────────────────────────────
 @bot.event
 async def on_ready():
@@ -22,9 +23,51 @@ async def on_ready():
         print(f"Sync error: {e}")
 
 # ─────────────────────────────
+# VERIFY SYSTEM (BUTTON)
+# ─────────────────────────────
+class VerifyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        role = discord.utils.get(interaction.guild.roles, name="Member")
+
+        if role is None:
+            return await interaction.response.send_message(
+                "❌ Member role not found",
+                ephemeral=True
+            )
+
+        await interaction.user.add_roles(role)
+
+        await interaction.response.send_message(
+            "✅ You are now verified!",
+            ephemeral=True
+        )
+
+# ─────────────────────────────
+# SETUP VERIFY MESSAGE
+# ─────────────────────────────
+@bot.tree.command(name="setup_verify", description="Send verify message (admin only)")
+async def setup_verify(interaction: discord.Interaction):
+
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    embed = discord.Embed(
+        title="🔐 Verify to enter the server",
+        description="Click the button below to get access to the server.",
+        color=0x2ecc71
+    )
+
+    await interaction.channel.send(embed=embed, view=VerifyView())
+    await interaction.response.send_message("✅ Verify message sent!", ephemeral=True)
+
+# ─────────────────────────────
 # BASIC COMMANDS
 # ─────────────────────────────
-
 @bot.tree.command(name="hello", description="Say hello")
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message("👋 Hello!")
@@ -38,37 +81,34 @@ async def rules(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="📜 Server Rules",
-        description="Please follow these rules to keep the server safe.",
+        description="Please follow the rules to keep the server safe.",
         color=0x2ecc71
     )
 
     embed.add_field(
-        name="🟢 Behavior & Respect",
-        value="Be respectful, no bullying or toxicity, follow staff",
+        name="🟢 Behavior",
+        value="Be respectful, no bullying, follow staff",
         inline=False
     )
 
     embed.add_field(
-        name="🟢 Communication",
-        value="English only, stay on topic, no spam or mic spam",
+        name="🟢 Chat Rules",
+        value="English only, no spam, stay on topic",
         inline=False
     )
 
     embed.add_field(
         name="🔴 Safety",
-        value="No NSFW, racism, doxxing, threats, hacking or raids",
+        value="No NSFW, racism, doxxing, hacking or raids",
         inline=False
     )
-
-    embed.set_footer(text="Follow Discord Terms of Service")
 
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("✅ Rules posted!", ephemeral=True)
 
 # ─────────────────────────────
-# MODERATION COMMANDS
+# MODERATION
 # ─────────────────────────────
-
 @bot.tree.command(name="kick", description="Kick a member")
 async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
     if not interaction.user.guild_permissions.kick_members:
