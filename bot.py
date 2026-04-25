@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 
 # ─────────────────────────────
-# 🔐 TOKEN (ENV SAFE)
+# 🔐 TOKEN (VEILIG VIA ENV)
 # ─────────────────────────────
 TOKEN = os.getenv("TOKEN")
 
@@ -17,25 +17,45 @@ intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # ─────────────────────────────
-# VERIFY COMMAND
+# VERIFY SYSTEM
 # ─────────────────────────────
-@bot.tree.command(name="verify")
-async def verify(interaction: discord.Interaction):
+class VerifyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    role = discord.utils.get(interaction.guild.roles, name="Member")
+    @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-    if not role:
-        role = await interaction.guild.create_role(name="Member")
+        role = discord.utils.get(interaction.guild.roles, name="Member")
 
-    await interaction.user.add_roles(role)
+        if not role:
+            role = await interaction.guild.create_role(name="Member")
 
-    await interaction.response.send_message("✅ Verified!", ephemeral=True)
+        await interaction.user.add_roles(role)
+
+        await interaction.response.send_message("✅ Verified!", ephemeral=True)
 
 # ─────────────────────────────
-# TIKTOK / CONTENT POST
+# SETUP VERIFY
 # ─────────────────────────────
-@bot.tree.command(name="tiktok")
-async def tiktok(interaction: discord.Interaction, link: str):
+@bot.tree.command(name="setup_verify")
+async def setup_verify(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="🔐 Verification",
+        description="Click the button below to verify yourself.",
+        color=0x2ecc71
+    )
+
+    await interaction.channel.send(embed=embed, view=VerifyView())
+
+    await interaction.response.send_message("Verify system created.", ephemeral=True)
+
+# ─────────────────────────────
+# CONTENT POST (📺│content)
+# ─────────────────────────────
+@bot.tree.command(name="post")
+async def post(interaction: discord.Interaction, link: str):
 
     channel = discord.utils.get(interaction.guild.text_channels, name="📺│content")
 
@@ -53,7 +73,7 @@ async def tiktok(interaction: discord.Interaction, link: str):
     await interaction.response.send_message("Posted!", ephemeral=True)
 
 # ─────────────────────────────
-# PERMISSION SAFE CHECK (FIX VOOR JOUW ERROR)
+# KICK
 # ─────────────────────────────
 @bot.tree.command(name="kick")
 async def kick(interaction: discord.Interaction, member: discord.Member):
@@ -65,6 +85,8 @@ async def kick(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f"Kicked {member.name}")
 
 # ─────────────────────────────
+# BAN
+# ─────────────────────────────
 @bot.tree.command(name="ban")
 async def ban(interaction: discord.Interaction, member: discord.Member):
 
@@ -74,6 +96,8 @@ async def ban(interaction: discord.Interaction, member: discord.Member):
     await member.ban()
     await interaction.response.send_message(f"Banned {member.name}")
 
+# ─────────────────────────────
+# CLEAR
 # ─────────────────────────────
 @bot.tree.command(name="clear")
 async def clear(interaction: discord.Interaction, amount: int):
@@ -86,11 +110,11 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.send_message(f"Cleared {amount} messages", ephemeral=True)
 
 # ─────────────────────────────
-# READY
+# READY EVENT
 # ─────────────────────────────
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("RZN compatible bot online")
+    print(f"{bot.user} is online (stable core bot)")
 
 bot.run(TOKEN)
