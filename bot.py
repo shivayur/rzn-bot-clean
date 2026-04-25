@@ -13,6 +13,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 member_count = 0
 
+TICKET_CATEGORY_NAME = "tickets"
+
 # ─────────────────────────────
 # READY
 # ─────────────────────────────
@@ -31,7 +33,7 @@ async def on_ready():
         print(e)
 
 # ─────────────────────────────
-# WELCOME CHANNEL
+# WELCOME SYSTEM
 # ─────────────────────────────
 @bot.event
 async def on_member_join(member):
@@ -56,65 +58,35 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# CAPTCHA VERIFY SYSTEM
+# VERIFY (SIMPLE FIX VERSION)
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
         super().__init__(timeout=None)
         self.role_id = role_id
 
-        self.emojis = ["🍎", "🍌", "🍇", "🍒", "🍉"]
-        self.correct = random.choice(self.emojis)
-
-    @discord.ui.button(label="Start Verify", style=discord.ButtonStyle.green)
-    async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        view = discord.ui.View(timeout=60)
-
-        for emoji in self.emojis:
-            view.add_item(CaptchaButton(self.role_id, self.correct, emoji))
-
-        embed = discord.Embed(
-            title="🔐 CAPTCHA VERIFY",
-            description=f"Click the correct emoji:\n\n**{self.correct}**",
-            color=0x2ecc71
-        )
-
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-# ─────────────────────────────
-# CAPTCHA BUTTONS
-# ─────────────────────────────
-class CaptchaButton(discord.ui.Button):
-    def __init__(self, role_id, correct, emoji):
-        super().__init__(label=emoji, style=discord.ButtonStyle.secondary)
-        self.role_id = role_id
-        self.correct = correct
-        self.emoji = emoji
-
-    async def callback(self, interaction: discord.Interaction):
-
-        await interaction.response.defer(ephemeral=True)
-
-        if self.emoji != self.correct:
-            return await interaction.followup.send("❌ Wrong emoji, try again.")
-
-        role = interaction.guild.get_role(self.role_id)
-
-        if role is None:
-            return await interaction.followup.send("❌ Role not found")
+    @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         try:
+            await interaction.response.defer(ephemeral=True)
+
+            role = interaction.guild.get_role(self.role_id)
+
+            if role is None:
+                return await interaction.followup.send("❌ Role not found", ephemeral=True)
+
             await interaction.user.add_roles(role)
-            await interaction.followup.send("✅ Verified successfully!")
+
+            await interaction.followup.send("✅ You are now verified!", ephemeral=True)
 
         except discord.Forbidden:
-            await interaction.followup.send("❌ Missing permissions")
+            await interaction.followup.send("❌ Missing permissions", ephemeral=True)
 
 # ─────────────────────────────
-# SETUP VERIFY COMMAND
+# SETUP VERIFY
 # ─────────────────────────────
-@bot.tree.command(name="setup_verify", description="Setup captcha verify")
+@bot.tree.command(name="setup_verify")
 async def setup_verify(interaction: discord.Interaction):
 
     if not interaction.user.guild_permissions.administrator:
@@ -123,23 +95,17 @@ async def setup_verify(interaction: discord.Interaction):
     role = discord.utils.get(interaction.guild.roles, name="Member")
 
     if not role:
-        return await interaction.response.send_message(
-            "❌ Create role 'Member'",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("❌ Create role 'Member'", ephemeral=True)
 
     embed = discord.Embed(
-        title="🔐 Verify System",
-        description="Click Start Verify to begin captcha",
+        title="🔐 Verify",
+        description="Click verify to get access",
         color=0x2ecc71
     )
 
-    await interaction.channel.send(
-        embed=embed,
-        view=VerifyButtonView(role.id)
-    )
+    await interaction.channel.send(embed=embed, view=VerifyButtonView(role.id))
 
-    await interaction.response.send_message("✅ Verify system sent", ephemeral=True)
+    await interaction.response.send_message("✅ Verify sent", ephemeral=True)
 
 # ─────────────────────────────
 # RULES
@@ -153,7 +119,7 @@ async def rules(interaction: discord.Interaction):
     )
 
     embed.add_field(name="Respect", value="Be respectful", inline=False)
-    embed.add_field(name="Spam", value="No spam or flooding", inline=False)
+    embed.add_field(name="Spam", value="No spam", inline=False)
     embed.add_field(name="Safety", value="No NSFW, hacking, doxxing", inline=False)
 
     await interaction.channel.send(embed=embed)
@@ -207,6 +173,82 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}", ephemeral=True)
+
+# ─────────────────────────────
+# TICKET SYSTEM
+# ─────────────────────────────
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎫 Open Ticket", style=discord.ButtonStyle.green)
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        guild = interaction.guild
+        user = interaction.user
+
+        category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+
+        if category is None:
+            category = await guild.create_category(TICKET_CATEGORY_NAME)
+
+        for channel in category.channels:
+            if channel.name == f"ticket-{user.id}":
+                return await interaction.response.send_message(
+                    "❌ You already have a ticket!",
+                    ephemeral=True
+                )
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True)
+        }
+
+        channel = await guild.create_text_channel(
+            name=f"ticket-{user.id}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        embed = discord.Embed(
+            title="🎫 Ticket Opened",
+            description="Explain your issue below.",
+            color=0x2ecc71
+        )
+
+        await channel.send(embed=embed, view=CloseTicketView())
+
+        await interaction.response.send_message(
+            f"✅ Ticket created: {channel.mention}",
+            ephemeral=True
+        )
+
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="❌ Close Ticket", style=discord.ButtonStyle.red)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.send_message("🔒 Closing ticket...", ephemeral=True)
+        await interaction.channel.delete()
+
+@bot.tree.command(name="ticket_panel")
+async def ticket_panel(interaction: discord.Interaction):
+
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    embed = discord.Embed(
+        title="🎫 Support Tickets",
+        description="Click below to open a ticket",
+        color=0x2ecc71
+    )
+
+    await interaction.channel.send(embed=embed, view=TicketView())
+
+    await interaction.response.send_message("✅ Ticket panel sent", ephemeral=True)
 
 # ─────────────────────────────
 # RUN BOT
