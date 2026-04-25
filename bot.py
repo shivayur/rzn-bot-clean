@@ -13,8 +13,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 member_count = 0
 
-TICKET_CATEGORY_NAME = "tickets"
-
 # ─────────────────────────────
 # READY
 # ─────────────────────────────
@@ -58,7 +56,7 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# VERIFY (SIMPLE FIX VERSION)
+# VERIFY SYSTEM
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -98,7 +96,7 @@ async def setup_verify(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ Create role 'Member'", ephemeral=True)
 
     embed = discord.Embed(
-        title="🔐 Verify",
+        title="🔐 Verify System",
         description="Click verify to get access",
         color=0x2ecc71
     )
@@ -175,44 +173,59 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
     await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}", ephemeral=True)
 
 # ─────────────────────────────
-# TICKET SYSTEM
+# TICKET SYSTEM (MULTI)
 # ─────────────────────────────
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="🎫 Open Ticket", style=discord.ButtonStyle.green)
-    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.select(
+        placeholder="Choose ticket type...",
+        options=[
+            discord.SelectOption(label="Support", emoji="🛠️"),
+            discord.SelectOption(label="Report User", emoji="🚨"),
+            discord.SelectOption(label="Admin Application", emoji="📝"),
+        ]
+    )
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
 
         guild = interaction.guild
         user = interaction.user
 
-        category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+        category = discord.utils.get(guild.categories, name="tickets")
 
         if category is None:
-            category = await guild.create_category(TICKET_CATEGORY_NAME)
+            category = await guild.create_category("tickets")
 
+        # check existing ticket
         for channel in category.channels:
-            if channel.name == f"ticket-{user.id}":
+            if channel.name.endswith(str(user.id)):
                 return await interaction.response.send_message(
                     "❌ You already have a ticket!",
                     ephemeral=True
                 )
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True)
-        }
+        ticket_type = select.values[0]
+
+        if ticket_type == "Support":
+            prefix = "support"
+        elif ticket_type == "Report User":
+            prefix = "report"
+        else:
+            prefix = "application"
 
         channel = await guild.create_text_channel(
-            name=f"ticket-{user.id}",
+            name=f"{prefix}-{user.name.lower().replace(' ', '-')}",
             category=category,
-            overwrites=overwrites
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True)
+            }
         )
 
         embed = discord.Embed(
-            title="🎫 Ticket Opened",
+            title=f"🎫 {ticket_type} Ticket",
             description="Explain your issue below.",
             color=0x2ecc71
         )
@@ -241,8 +254,8 @@ async def ticket_panel(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     embed = discord.Embed(
-        title="🎫 Support Tickets",
-        description="Click below to open a ticket",
+        title="🎫 Ticket System",
+        description="Select a category below to open a ticket",
         color=0x2ecc71
     )
 
