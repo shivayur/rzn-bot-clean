@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import os
-import random
 
 TOKEN = os.getenv("TOKEN")
 
@@ -12,6 +11,8 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 member_count = 0
+
+TICKET_CATEGORY = "tickets"
 
 # ─────────────────────────────
 # READY
@@ -31,7 +32,7 @@ async def on_ready():
         print(e)
 
 # ─────────────────────────────
-# WELCOME SYSTEM
+# WELCOME
 # ─────────────────────────────
 @bot.event
 async def on_member_join(member):
@@ -44,10 +45,7 @@ async def on_member_join(member):
     if channel:
         embed = discord.Embed(
             title="👋 Welcome!",
-            description=(
-                f"Member #{member_count} joined!\n"
-                f"Welcome to **{member.guild.name}** 🎉"
-            ),
+            description=f"Member #{member_count} joined!\nWelcome to **{member.guild.name}** 🎉",
             color=0x2ecc71
         )
 
@@ -56,7 +54,7 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# VERIFY SYSTEM
+# VERIFY
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -82,7 +80,7 @@ class VerifyButtonView(discord.ui.View):
             await interaction.followup.send("❌ Missing permissions", ephemeral=True)
 
 # ─────────────────────────────
-# SETUP VERIFY
+# VERIFY SETUP
 # ─────────────────────────────
 @bot.tree.command(name="setup_verify")
 async def setup_verify(interaction: discord.Interaction):
@@ -122,6 +120,131 @@ async def rules(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("✅ Rules sent", ephemeral=True)
+
+# ─────────────────────────────
+# ADMIN APPLICATION EMBED
+# ─────────────────────────────
+def get_admin_application_embed():
+    embed = discord.Embed(
+        title="📝 Admin Application Form",
+        description="Please answer all questions clearly and honestly.",
+        color=0x2ecc71
+    )
+
+    embed.add_field(name="1. Username", value="What is your in-game username?", inline=False)
+    embed.add_field(name="2. Age", value="What is your age?", inline=False)
+    embed.add_field(name="3. Motivation", value="Why do you want to become an administrator?", inline=False)
+    embed.add_field(name="4. Experience", value="Do you have previous staff experience? Explain.", inline=False)
+    embed.add_field(name="5. Skills", value="What makes you suitable for staff?", inline=False)
+    embed.add_field(name="6. Situations", value="How would you handle rule breakers?", inline=False)
+    embed.add_field(name="7. Motivation", value="What motivates you?", inline=False)
+    embed.add_field(name="8. Responsibility", value="Do you understand staff responsibilities?", inline=False)
+    embed.add_field(name="9. Questions", value="Any questions for staff?", inline=False)
+
+    return embed
+
+# ─────────────────────────────
+# CLOSE TICKET
+# ─────────────────────────────
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="❌ Close Ticket", style=discord.ButtonStyle.red)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        await interaction.response.send_message("🔒 Closing ticket...", ephemeral=True)
+        await interaction.channel.delete()
+
+# ─────────────────────────────
+# TICKET SYSTEM
+# ─────────────────────────────
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Choose ticket type...",
+        options=[
+            discord.SelectOption(label="Support", emoji="🛠️"),
+            discord.SelectOption(label="Report User", emoji="🚨"),
+            discord.SelectOption(label="Admin Application", emoji="📝"),
+        ]
+    )
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+
+        guild = interaction.guild
+        user = interaction.user
+
+        category = discord.utils.get(guild.categories, name=TICKET_CATEGORY)
+
+        if category is None:
+            category = await guild.create_category(TICKET_CATEGORY)
+
+        for channel in category.channels:
+            if channel.name.endswith(str(user.id)):
+                return await interaction.response.send_message(
+                    "❌ You already have a ticket!",
+                    ephemeral=True
+                )
+
+        ticket_type = select.values[0]
+        auto_embed = None
+
+        if ticket_type == "Support":
+            prefix = "support"
+
+        elif ticket_type == "Report User":
+            prefix = "report"
+
+        else:
+            prefix = "application"
+            auto_embed = get_admin_application_embed()
+
+        channel = await guild.create_text_channel(
+            name=f"{prefix}-{user.name.lower().replace(' ', '-')}",
+            category=category,
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True)
+            }
+        )
+
+        embed = discord.Embed(
+            title=f"🎫 {ticket_type}",
+            description="Please explain your request below.",
+            color=0x2ecc71
+        )
+
+        await channel.send(embed=embed, view=CloseTicketView())
+
+        if auto_embed:
+            await channel.send(embed=auto_embed)
+
+        await interaction.response.send_message(
+            f"✅ Ticket created: {channel.mention}",
+            ephemeral=True
+        )
+
+# ─────────────────────────────
+# TICKET PANEL
+# ─────────────────────────────
+@bot.tree.command(name="ticket_panel")
+async def ticket_panel(interaction: discord.Interaction):
+
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    embed = discord.Embed(
+        title="🎫 Ticket System",
+        description="Select a ticket type below",
+        color=0x2ecc71
+    )
+
+    await interaction.channel.send(embed=embed, view=TicketView())
+
+    await interaction.response.send_message("✅ Ticket panel sent", ephemeral=True)
 
 # ─────────────────────────────
 # BASIC COMMANDS
@@ -171,97 +294,6 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}", ephemeral=True)
-
-# ─────────────────────────────
-# TICKET SYSTEM (MULTI)
-# ─────────────────────────────
-class TicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.select(
-        placeholder="Choose ticket type...",
-        options=[
-            discord.SelectOption(label="Support", emoji="🛠️"),
-            discord.SelectOption(label="Report User", emoji="🚨"),
-            discord.SelectOption(label="Admin Application", emoji="📝"),
-        ]
-    )
-    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-
-        guild = interaction.guild
-        user = interaction.user
-
-        category = discord.utils.get(guild.categories, name="tickets")
-
-        if category is None:
-            category = await guild.create_category("tickets")
-
-        # check existing ticket
-        for channel in category.channels:
-            if channel.name.endswith(str(user.id)):
-                return await interaction.response.send_message(
-                    "❌ You already have a ticket!",
-                    ephemeral=True
-                )
-
-        ticket_type = select.values[0]
-
-        if ticket_type == "Support":
-            prefix = "support"
-        elif ticket_type == "Report User":
-            prefix = "report"
-        else:
-            prefix = "application"
-
-        channel = await guild.create_text_channel(
-            name=f"{prefix}-{user.name.lower().replace(' ', '-')}",
-            category=category,
-            overwrites={
-                guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(view_channel=True)
-            }
-        )
-
-        embed = discord.Embed(
-            title=f"🎫 {ticket_type} Ticket",
-            description="Explain your issue below.",
-            color=0x2ecc71
-        )
-
-        await channel.send(embed=embed, view=CloseTicketView())
-
-        await interaction.response.send_message(
-            f"✅ Ticket created: {channel.mention}",
-            ephemeral=True
-        )
-
-class CloseTicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="❌ Close Ticket", style=discord.ButtonStyle.red)
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        await interaction.response.send_message("🔒 Closing ticket...", ephemeral=True)
-        await interaction.channel.delete()
-
-@bot.tree.command(name="ticket_panel")
-async def ticket_panel(interaction: discord.Interaction):
-
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    embed = discord.Embed(
-        title="🎫 Ticket System",
-        description="Select a category below to open a ticket",
-        color=0x2ecc71
-    )
-
-    await interaction.channel.send(embed=embed, view=TicketView())
-
-    await interaction.response.send_message("✅ Ticket panel sent", ephemeral=True)
 
 # ─────────────────────────────
 # RUN BOT
