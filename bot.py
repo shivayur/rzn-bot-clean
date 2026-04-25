@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 
 # ─────────────────────────────
-# 🔐 TOKEN (VEILIG VIA ENV)
+# 🔐 TOKEN
 # ─────────────────────────────
 TOKEN = os.getenv("TOKEN")
 
@@ -36,7 +36,7 @@ class VerifyView(discord.ui.View):
         await interaction.response.send_message("✅ Verified!", ephemeral=True)
 
 # ─────────────────────────────
-# SETUP VERIFY
+# SETUP VERIFY MESSAGE
 # ─────────────────────────────
 @bot.tree.command(name="setup_verify")
 async def setup_verify(interaction: discord.Interaction):
@@ -110,11 +110,35 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.send_message(f"Cleared {amount} messages", ephemeral=True)
 
 # ─────────────────────────────
-# READY EVENT
+# TIMEOUT
+# ─────────────────────────────
+@bot.tree.command(name="timeout")
+async def timeout(interaction: discord.Interaction, member: discord.Member, minutes: int):
+
+    if not interaction.user.guild_permissions.moderate_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    try:
+        duration = discord.utils.utcnow() + discord.timedelta(minutes=minutes)
+
+        await member.edit(timed_out_until=duration)
+
+        await interaction.response.send_message(
+            f"⏱️ {member.name} timed out for {minutes} minutes"
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Timeout failed: {e}",
+            ephemeral=True
+        )
+
+# ─────────────────────────────
+# READY
 # ─────────────────────────────
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"{bot.user} is online (stable core bot)")
+    print(f"{bot.user} is online (stable full moderation bot)")
 
 bot.run(TOKEN)
