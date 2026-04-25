@@ -1,6 +1,10 @@
 import discord
 from discord.ext import commands
 import os
+import json
+import random
+import asyncio
+import datetime
 
 TOKEN = os.getenv("TOKEN")
 
@@ -10,312 +14,216 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-member_count = 0
-
-TICKET_CATEGORY = "tickets"
+LEVEL_FILE = "levels.json"
 
 # ─────────────────────────────
-# READY
+# DATA SYSTEM
 # ─────────────────────────────
-@bot.event
-async def on_ready():
-    global member_count
-
-    for guild in bot.guilds:
-        member_count = guild.member_count
-
+def load_data():
     try:
-        synced = await bot.tree.sync()
-        print(f"Bot online als {bot.user}")
-        print(f"Synced {len(synced)} commands")
-    except Exception as e:
-        print(e)
+        with open(LEVEL_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_data(data):
+    with open(LEVEL_FILE, "w") as f:
+        json.dump(data, f)
+
+def get_level(xp):
+    return int(xp ** 0.5 / 10)
 
 # ─────────────────────────────
-# WELCOME
+# XP SYSTEM (CHAT)
 # ─────────────────────────────
 @bot.event
-async def on_member_join(member):
-    global member_count
+async def on_message(message):
+    if message.author.bot:
+        return
 
-    member_count += 1
+    data = load_data()
+    user_id = str(message.author.id)
 
-    channel = discord.utils.get(member.guild.text_channels, name="welcome")
+    if user_id not in data:
+        data[user_id] = {"xp": 0, "level": 0}
+
+    data[user_id]["xp"] += 5
+
+    new_level = get_level(data[user_id]["xp"])
+
+    if new_level > data[user_id]["level"]:
+        data[user_id]["level"] = new_level
+        await message.channel.send(f"🎉 {message.author.mention} reached Level {new_level}!")
+
+    save_data(data)
+
+    await bot.process_commands(message)
+
+# ─────────────────────────────
+# CLIPRATE SYSTEM
+# ─────────────────────────────
+@bot.tree.command(name="cliprate")
+async def cliprate(interaction: discord.Interaction, clip: str):
+
+    data = load_data()
+    user_id = str(interaction.user.id)
+
+    if user_id not in data:
+        data[user_id] = {"xp": 0, "level": 0}
+
+    score = random.randint(1, 10)
+    xp_gain = score * 10
+
+    data[user_id]["xp"] += xp_gain
+    data[user_id]["level"] = get_level(data[user_id]["xp"])
+
+    save_data(data)
+
+    embed = discord.Embed(
+        title="🎬 Clip Rating",
+        color=0x2ecc71
+    )
+
+    embed.add_field(name="Clip", value=clip, inline=False)
+    embed.add_field(name="Rating", value=f"{score}/10", inline=True)
+    embed.add_field(name="XP Gained", value=f"+{xp_gain}", inline=True)
+
+    await interaction.response.send_message(embed=embed)
+
+# ─────────────────────────────
+# LEVEL COMMAND
+# ─────────────────────────────
+@bot.tree.command(name="level")
+async def level(interaction: discord.Interaction, member: discord.Member = None):
+
+    data = load_data()
+    member = member or interaction.user
+    user_id = str(member.id)
+
+    if user_id not in data:
+        return await interaction.response.send_message("No data yet.")
+
+    embed = discord.Embed(
+        title=f"{member.name} Stats",
+        color=0x2ecc71
+    )
+
+    embed.add_field(name="Level", value=data[user_id]["level"])
+    embed.add_field(name="XP", value=data[user_id]["xp"])
+
+    await interaction.response.send_message(embed=embed)
+
+# ─────────────────────────────
+# FANCY LEADERBOARD (TOP 15)
+# ─────────────────────────────
+@bot.tree.command(name="leaderboard")
+async def leaderboard(interaction: discord.Interaction):
+
+    data = load_data()
+
+    sorted_users = sorted(
+        data.items(),
+        key=lambda x: x[1]["xp"],
+        reverse=True
+    )[:15]
+
+    embed = discord.Embed(
+        title="🏆 RZN LEADERBOARD",
+        color=0x2ecc71
+    )
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    for i, (user_id, stats) in enumerate(sorted_users, start=1):
+
+        try:
+            user = await bot.fetch_user(int(user_id))
+            medal = medals[i-1] if i <= 3 else f"#{i}"
+
+            embed.add_field(
+                name=f"{medal} {user.name}",
+                value=f"Level {stats['level']} | XP {stats['xp']}",
+                inline=False
+            )
+
+        except:
+            continue
+
+    await interaction.response.send_message(embed=embed)
+
+# ─────────────────────────────
+# MONTHLY WINNER
+# ─────────────────────────────
+async def monthly_reward():
+
+    data = load_data()
+
+    sorted_users = sorted(
+        data.items(),
+        key=lambda x: x[1]["xp"],
+        reverse=True
+    )
+
+    if not sorted_users:
+        return
+
+    top_user_id, _ = sorted_users[0]
+    user = await bot.fetch_user(int(top_user_id))
+
+    guild = bot.guilds[0]
+    channel = discord.utils.get(guild.text_channels, name="leaderboard")
 
     if channel:
-        embed = discord.Embed(
-            title="👋 Welcome!",
-            description=f"Member #{member_count} joined!\nWelcome to **{member.guild.name}** 🎉",
-            color=0x2ecc71
+        await channel.send(
+            f"🏆 Monthly Winner: {user.mention}\n"
+            f"🎁 Reward: Special Role / Shoutout"
         )
 
-        await channel.send(embed=embed)
+async def monthly_loop():
+    await bot.wait_until_ready()
+
+    while not bot.is_closed():
+
+        now = datetime.datetime.utcnow()
+
+        if now.day == 1 and now.hour == 0:
+            await monthly_reward()
+            await asyncio.sleep(86400)
+
+        await asyncio.sleep(3600)
 
 # ─────────────────────────────
-# VERIFY
-# ─────────────────────────────
-class VerifyButtonView(discord.ui.View):
-    def __init__(self, role_id: int):
-        super().__init__(timeout=None)
-        self.role_id = role_id
-
-    @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
-    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        try:
-            await interaction.response.defer(ephemeral=True)
-
-            role = interaction.guild.get_role(self.role_id)
-
-            if not role:
-                return await interaction.followup.send("❌ Role not found", ephemeral=True)
-
-            await interaction.user.add_roles(role)
-
-            await interaction.followup.send("✅ Verified!", ephemeral=True)
-
-        except Exception as e:
-            print(f"VERIFY ERROR: {e}")
-            await interaction.followup.send("❌ Error", ephemeral=True)
-
-# ─────────────────────────────
-# VERIFY SETUP
-# ─────────────────────────────
-@bot.tree.command(name="setup_verify")
-async def setup_verify(interaction: discord.Interaction):
-
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    role = discord.utils.get(interaction.guild.roles, name="Member")
-
-    if not role:
-        return await interaction.response.send_message("❌ Create 'Member' role", ephemeral=True)
-
-    embed = discord.Embed(
-        title="VERIFY",
-        description="Click to get access",
-        color=0x2ecc71
-    )
-
-    await interaction.channel.send(embed=embed, view=VerifyButtonView(role.id))
-
-    await interaction.response.send_message("✅ Sent", ephemeral=True)
-
-# ─────────────────────────────
-# RULES
-# ─────────────────────────────
-@bot.tree.command(name="rules")
-async def rules(interaction: discord.Interaction):
-
-    embed = discord.Embed(
-        title="RULES",
-        color=0x2ecc71
-    )
-
-    embed.add_field(name="Respect", value="Be respectful", inline=False)
-    embed.add_field(name="Spam", value="No spam", inline=False)
-    embed.add_field(name="Safety", value="No NSFW or abuse", inline=False)
-
-    await interaction.channel.send(embed=embed)
-    await interaction.response.send_message("✅ Sent", ephemeral=True)
-
-# ─────────────────────────────
-# ADMIN APPLICATION
-# ─────────────────────────────
-def get_admin_application_embed():
-    embed = discord.Embed(
-        title="ADMIN APPLICATION",
-        description="Please answer all questions below.",
-        color=0x2ecc71
-    )
-
-    embed.add_field(name="1", value="Username", inline=False)
-    embed.add_field(name="2", value="Age", inline=False)
-    embed.add_field(name="3", value="Why admin?", inline=False)
-    embed.add_field(name="4", value="Experience", inline=False)
-    embed.add_field(name="5", value="Skills", inline=False)
-    embed.add_field(name="6", value="Situations", inline=False)
-    embed.add_field(name="7", value="Motivation", inline=False)
-    embed.add_field(name="8", value="Responsibility", inline=False)
-    embed.add_field(name="9", value="Questions", inline=False)
-
-    return embed
-
-# ─────────────────────────────
-# CLOSE TICKET
-# ─────────────────────────────
-class CloseTicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.red)
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        await interaction.response.send_message("Closing...", ephemeral=True)
-        await interaction.channel.delete()
-
-# ─────────────────────────────
-# TICKET SYSTEM
-# ─────────────────────────────
-class TicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.select(
-        placeholder="Choose ticket type",
-        options=[
-            discord.SelectOption(label="Support", emoji="🛠️"),
-            discord.SelectOption(label="Report User", emoji="🚨"),
-            discord.SelectOption(label="Admin Application", emoji="📝"),
-        ]
-    )
-    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-
-        try:
-            await interaction.response.defer(ephemeral=True)
-
-            guild = interaction.guild
-            user = interaction.user
-
-            category = discord.utils.get(guild.categories, name=TICKET_CATEGORY)
-
-            if category is None:
-                category = await guild.create_category(TICKET_CATEGORY)
-
-            ticket_type = select.values[0]
-
-            prefix = {
-                "Support": "support",
-                "Report User": "report",
-                "Admin Application": "application"
-            }.get(ticket_type, "ticket")
-
-            channel = await guild.create_text_channel(
-                name=f"{prefix}-{user.name.lower().replace(' ', '-')}",
-                category=category,
-                overwrites={
-                    guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                    user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-                    guild.me: discord.PermissionOverwrite(view_channel=True)
-                }
-            )
-
-            embed = discord.Embed(
-                title=ticket_type,
-                description="Describe your request below.",
-                color=0x2ecc71
-            )
-
-            await channel.send(embed=embed, view=CloseTicketView())
-
-            if ticket_type == "Admin Application":
-                await channel.send(embed=get_admin_application_embed())
-
-            await interaction.followup.send(
-                f"Ticket created: {channel.mention}",
-                ephemeral=True
-            )
-
-        except Exception as e:
-            print(f"TICKET ERROR: {e}")
-
-# ─────────────────────────────
-# TICKET PANEL
-# ─────────────────────────────
-@bot.tree.command(name="ticket_panel")
-async def ticket_panel(interaction: discord.Interaction):
-
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    embed = discord.Embed(
-        title="TICKETS",
-        description="Select a type below",
-        color=0x2ecc71
-    )
-
-    await interaction.channel.send(embed=embed, view=TicketView())
-
-    await interaction.response.send_message("✅ Sent", ephemeral=True)
-
-# ─────────────────────────────
-# /AD COMMAND
+# AD COMMAND
 # ─────────────────────────────
 @bot.tree.command(name="ad")
 async def ad(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="JOIN RZN",
-        description=(
-            "A Minecraft PvP and community server focused on improvement, competition, and social interaction.\n\n"
-            "WHAT RZN IS ABOUT\n"
-            "Structured community for PvP improvement and social interaction.\n\n"
-            "FEATURES\n"
-            "• PvP improvement & feedback\n"
-            "• Weekly events & tournaments\n"
-            "• Community & chill environment\n"
-            "• Ticket & verification systems\n"
-            "• Minecraft content & resources\n\n"
-            "ABOUT\n"
-            "Balanced PvP + community server.\n\n"
-            "Owned by Shivayur\n\n"
-            "Join RZN:\n"
-            "https://discord.gg/PtP7sHwKJF"
-        ),
+        description="PvP & community server focused on improvement, competition and social interaction.",
         color=0x2ecc71
     )
+
+    embed.add_field(name="Features", value="PvP clips, events, community, bots", inline=False)
+    embed.add_field(name="Invite", value="https://discord.gg/PtP7sHwKJF", inline=False)
 
     await interaction.response.send_message(embed=embed)
 
 # ─────────────────────────────
 # BASIC COMMANDS
 # ─────────────────────────────
-@bot.tree.command(name="hello")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message("👋 Hello!")
-
 @bot.tree.command(name="ping")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("🏓 Pong!")
+    await interaction.response.send_message("Pong!")
 
 # ─────────────────────────────
-# MODERATION
+# READY
 # ─────────────────────────────
-@bot.tree.command(name="kick")
-async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
-
-    if not interaction.user.guild_permissions.kick_members:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    await member.kick(reason=reason)
-    await interaction.response.send_message(f"Kicked {member}", ephemeral=True)
-
-@bot.tree.command(name="ban")
-async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
-
-    if not interaction.user.guild_permissions.ban_members:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    await member.ban(reason=reason)
-    await interaction.response.send_message(f"Banned {member}", ephemeral=True)
-
-@bot.tree.command(name="clear")
-async def clear(interaction: discord.Interaction, amount: int):
-
-    if not interaction.user.guild_permissions.manage_messages:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message(f"Deleted {amount}", ephemeral=True)
-
-@bot.tree.command(name="warn")
-async def warn(interaction: discord.Interaction, member: discord.Member, reason: str):
-
-    if not interaction.user.guild_permissions.moderate_members:
-        return await interaction.response.send_message("❌ No permission", ephemeral=True)
-
-    await interaction.response.send_message(f"{member.mention} warned: {reason}", ephemeral=True)
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    bot.loop.create_task(monthly_loop())
+    print(f"Bot online als {bot.user}")
 
 # ─────────────────────────────
 # RUN
