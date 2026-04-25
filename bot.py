@@ -1,11 +1,12 @@
 import discord
 from discord.ext import commands
 import sqlite3
+import os
 
 # ─────────────────────────────
-# 🔐 TOKEN (HIER INVULLEN)
+# 🔐 TOKEN (VEILIG VIA ENV)
 # ─────────────────────────────
-TOKEN = "MTQ5NzYzODkwNDk5ODY2MjE3NA.G8cSKH.cyWE6kjMTKEkDkRPoelTYT4xCm0XwCTMpK8Ssw"
+TOKEN = os.getenv("TOKEN")
 
 # ─────────────────────────────
 # INTENTS
@@ -43,7 +44,7 @@ def get_level(msgs):
     return 0
 
 # ─────────────────────────────
-# MESSAGE TRACKING
+# MESSAGE SYSTEM
 # ─────────────────────────────
 @bot.event
 async def on_message(message):
@@ -85,7 +86,7 @@ async def leaderboard(interaction: discord.Interaction):
         user = await bot.fetch_user(int(r[0]))
         embed.add_field(
             name=f"#{i} {user.name}",
-            value=f"{r[1]} messages | Level {r[2]}",
+            value=f"{r[1]} msgs | Level {r[2]}",
             inline=False
         )
 
@@ -175,61 +176,21 @@ class TicketView(discord.ui.View):
 
         choice = select.values[0]
 
-        # ─────────────────────────────
-        # 💼 ADMIN APPLICATION (IMPROVED)
-        # ─────────────────────────────
         if choice == "Admin Application":
 
             await channel.send(
-"""📋 **RZN STAFF APPLICATION**
+"""📋 ADMIN APPLICATION
 
-Thank you for applying to the RZN Staff Team.
+1. Username
+2. Age
+3. Why staff?
+4. Experience
+5. Motivation
+6. Scenario handling
+7. Activity hours
+8. Questions
 
-Please answer all questions clearly, honestly, and in detail.
-This application will be reviewed by the management team.
-
-━━━━━━━━━━━━━━━━━━
-🧾 PERSONAL INFORMATION
-━━━━━━━━━━━━━━━━━━
-
-1. What is your in-game username?
-2. What is your age?
-
-━━━━━━━━━━━━━━━━━━
-🧠 EXPERIENCE
-━━━━━━━━━━━━━━━━━━
-
-3. Do you have any previous staff experience? Explain.
-4. Have you moderated a Discord/Minecraft server before?
-
-━━━━━━━━━━━━━━━━━━
-💡 MOTIVATION
-━━━━━━━━━━━━━━━━━━
-
-5. Why do you want to become staff on RZN?
-6. What makes a good staff member in your opinion?
-
-━━━━━━━━━━━━━━━━━━
-⚖️ SITUATION QUESTIONS
-━━━━━━━━━━━━━━━━━━
-
-7. A player breaks a rule but says it was a mistake. What do you do?
-8. Two players are arguing. How do you handle it?
-
-━━━━━━━━━━━━━━━━━━
-⏳ ACTIVITY
-━━━━━━━━━━━━━━━━━━
-
-9. How active can you be?
-
-━━━━━━━━━━━━━━━━━━
-❓ FINAL QUESTION
-━━━━━━━━━━━━━━━━━━
-
-10. Any questions for us?
-
-━━━━━━━━━━━━━━━━━━
-📌 Be honest. Take your time.
+Be honest and detailed.
 """
             )
 
@@ -239,7 +200,7 @@ This application will be reviewed by the management team.
         await interaction.response.send_message(f"Created {channel.mention}", ephemeral=True)
 
 # ─────────────────────────────
-# TIKTOK SYSTEM
+# TIKTOK
 # ─────────────────────────────
 @bot.tree.command(name="tiktok")
 async def tiktok(interaction: discord.Interaction, link: str):
@@ -274,6 +235,6 @@ async def ban(interaction, member: discord.Member):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("RZN bot online")
+    print("Bot online (secure mode)")
 
 bot.run(TOKEN)
