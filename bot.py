@@ -11,7 +11,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ─────────────────────────────
-# READY EVENT
+# READY
 # ─────────────────────────────
 @bot.event
 async def on_ready():
@@ -23,7 +23,37 @@ async def on_ready():
         print(f"Sync error: {e}")
 
 # ─────────────────────────────
-# VERIFY SYSTEM (FIXED)
+# WELCOME DM + OPTIONAL ROLE
+# ─────────────────────────────
+@bot.event
+async def on_member_join(member):
+
+    role = discord.utils.get(member.guild.roles, name="Unverified")
+
+    if role:
+        try:
+            await member.add_roles(role)
+        except:
+            pass
+
+    try:
+        embed = discord.Embed(
+            title="👋 Welcome!",
+            description=(
+                "Welcome to the server!\n\n"
+                "🔐 Go to #verify and click the button\n"
+                "to get full access."
+            ),
+            color=0x2ecc71
+        )
+
+        await member.send(embed=embed)
+
+    except discord.Forbidden:
+        pass
+
+# ─────────────────────────────
+# VERIFY SYSTEM
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -51,91 +81,39 @@ class VerifyButtonView(discord.ui.View):
 
         except discord.Forbidden:
             await interaction.response.send_message(
-                "❌ I don't have permission to give roles",
+                "❌ I can't give roles (check permissions)",
                 ephemeral=True
             )
-
-class VerifySetupView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=120)
-
-        self.selected_role_id = None
-
-        options = []
-        for role in interaction_cache["guild"].roles:
-            if role.name != "@everyone":
-                options.append(
-                    discord.SelectOption(label=role.name, value=str(role.id))
-                )
-
-        self.select = discord.ui.Select(
-            placeholder="Select verification role...",
-            options=options,
-            min_values=1,
-            max_values=1
-        )
-
-        self.select.callback = self.select_callback
-        self.add_item(self.select)
-
-    async def select_callback(self, interaction: discord.Interaction):
-        self.selected_role_id = int(self.select.values[0])
-
-        role = interaction.guild.get_role(self.selected_role_id)
-
-        await interaction.response.send_message(
-            f"✅ Selected role: {role.name}",
-            ephemeral=True
-        )
-
-    @discord.ui.button(label="Send Verify Message", style=discord.ButtonStyle.green)
-    async def send_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        if self.selected_role_id is None:
-            return await interaction.response.send_message(
-                "❌ Select a role first",
-                ephemeral=True
-            )
-
-        embed = discord.Embed(
-            title="🔐 Verify to enter the server",
-            description="Click the button below to get access.",
-            color=0x2ecc71
-        )
-
-        await interaction.channel.send(
-            embed=embed,
-            view=VerifyButtonView(self.selected_role_id)
-        )
-
-        await interaction.response.send_message(
-            "✅ Verify message sent!",
-            ephemeral=True
-        )
-
-# ─────────────────────────────
-# TEMP CACHE (fix voor dropdown context)
-# ─────────────────────────────
-interaction_cache = {}
 
 # ─────────────────────────────
 # SETUP VERIFY COMMAND
 # ─────────────────────────────
-@bot.tree.command(name="setup_verify", description="Setup verification system")
+@bot.tree.command(name="setup_verify", description="Create verify message")
 async def setup_verify(interaction: discord.Interaction):
 
     if not interaction.user.guild_permissions.administrator:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
-    interaction_cache["guild"] = interaction.guild
+    role = discord.utils.get(interaction.guild.roles, name="Member")
 
-    view = VerifySetupView()
+    if role is None:
+        return await interaction.response.send_message(
+            "❌ Create a role named 'Member'",
+            ephemeral=True
+        )
 
-    await interaction.response.send_message(
-        "⚙️ Select role and send verify message:",
-        view=view,
-        ephemeral=True
+    embed = discord.Embed(
+        title="🔐 Verify to enter the server",
+        description="Click the button below to get access.",
+        color=0x2ecc71
     )
+
+    await interaction.channel.send(
+        embed=embed,
+        view=VerifyButtonView(role.id)
+    )
+
+    await interaction.response.send_message("✅ Verify system sent!", ephemeral=True)
 
 # ─────────────────────────────
 # BASIC COMMANDS
@@ -148,7 +126,7 @@ async def hello(interaction: discord.Interaction):
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("🏓 Pong!")
 
-@bot.tree.command(name="rules", description="Show server rules")
+@bot.tree.command(name="rules", description="Show rules")
 async def rules(interaction: discord.Interaction):
 
     embed = discord.Embed(
@@ -157,13 +135,13 @@ async def rules(interaction: discord.Interaction):
     )
 
     embed.add_field(
-        name="🟢 Respect",
+        name="🟢 Behavior",
         value="Be respectful, no bullying or hate",
         inline=False
     )
 
     embed.add_field(
-        name="🟢 Chat Rules",
+        name="🟢 Chat",
         value="No spam, stay on topic, English only",
         inline=False
     )
@@ -180,24 +158,27 @@ async def rules(interaction: discord.Interaction):
 # ─────────────────────────────
 # MODERATION
 # ─────────────────────────────
-@bot.tree.command(name="kick", description="Kick a member")
+@bot.tree.command(name="kick", description="Kick a user")
 async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+
     if not interaction.user.guild_permissions.kick_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.kick(reason=reason)
-    await interaction.response.send_message(f"👢 {member} kicked.")
+    await interaction.response.send_message(f"👢 Kicked {member}")
 
-@bot.tree.command(name="ban", description="Ban a member")
+@bot.tree.command(name="ban", description="Ban a user")
 async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+
     if not interaction.user.guild_permissions.ban_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.ban(reason=reason)
-    await interaction.response.send_message(f"⛔ {member} banned.")
+    await interaction.response.send_message(f"⛔ Banned {member}")
 
 @bot.tree.command(name="clear", description="Delete messages")
 async def clear(interaction: discord.Interaction, amount: int):
+
     if not interaction.user.guild_permissions.manage_messages:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
@@ -206,6 +187,7 @@ async def clear(interaction: discord.Interaction, amount: int):
 
 @bot.tree.command(name="warn", description="Warn a user")
 async def warn(interaction: discord.Interaction, member: discord.Member, reason: str):
+
     if not interaction.user.guild_permissions.moderate_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
