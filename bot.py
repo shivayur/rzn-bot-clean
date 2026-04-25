@@ -27,10 +27,10 @@ async def on_ready():
         print(f"Bot online als {bot.user}")
         print(f"Synced {len(synced)} commands")
     except Exception as e:
-        print(f"Sync error: {e}")
+        print(e)
 
 # ─────────────────────────────
-# WELCOME CHANNEL MESSAGE
+# WELCOME MESSAGE
 # ─────────────────────────────
 @bot.event
 async def on_member_join(member):
@@ -55,7 +55,7 @@ async def on_member_join(member):
         await channel.send(embed=embed)
 
 # ─────────────────────────────
-# VERIFY SYSTEM (FIXED - NO INTERACTION FAIL)
+# VERIFY SYSTEM (NO SPAM FIX)
 # ─────────────────────────────
 class VerifyButtonView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -71,27 +71,21 @@ class VerifyButtonView(discord.ui.View):
             role = interaction.guild.get_role(self.role_id)
 
             if role is None:
-                return await interaction.followup.send("❌ Role not found")
-
-            # check role hierarchy
-            if role >= interaction.guild.me.top_role:
-                return await interaction.followup.send(
-                    "❌ Bot role is too low to assign this role"
-                )
+                return await interaction.followup.send("❌ Role not found", ephemeral=True)
 
             await interaction.user.add_roles(role)
 
-            await interaction.followup.send("✅ You are now verified!")
+            # 🔥 ONLY USER SEES THIS
+            await interaction.followup.send(
+                "✅ You are now verified!",
+                ephemeral=True
+            )
 
         except discord.Forbidden:
-            await interaction.followup.send("❌ Missing permissions (Manage Roles or role hierarchy)")
-
-        except Exception as e:
-            print(f"VERIFY ERROR: {e}")
-            try:
-                await interaction.followup.send("❌ Unexpected error (check logs)")
-            except:
-                pass
+            await interaction.followup.send(
+                "❌ I cannot give roles (check permissions)",
+                ephemeral=True
+            )
 
 # ─────────────────────────────
 # SETUP VERIFY
@@ -106,13 +100,13 @@ async def setup_verify(interaction: discord.Interaction):
 
     if not role:
         return await interaction.response.send_message(
-            "❌ Create a role named 'Member'",
+            "❌ Create role 'Member'",
             ephemeral=True
         )
 
     embed = discord.Embed(
-        title="🔐 Verify System",
-        description="Click the button below to get access",
+        title="🔐 Verify",
+        description="Click the button to get access",
         color=0x2ecc71
     )
 
@@ -126,16 +120,16 @@ async def setup_verify(interaction: discord.Interaction):
 # ─────────────────────────────
 # RULES
 # ─────────────────────────────
-@bot.tree.command(name="rules", description="Show rules")
+@bot.tree.command(name="rules")
 async def rules(interaction: discord.Interaction):
 
     embed = discord.Embed(
-        title="📜 Server Rules",
+        title="📜 Rules",
         color=0x2ecc71
     )
 
-    embed.add_field(name="Respect", value="Be respectful, no bullying", inline=False)
-    embed.add_field(name="Chat", value="No spam, stay on topic", inline=False)
+    embed.add_field(name="Respect", value="Be respectful", inline=False)
+    embed.add_field(name="Spam", value="No spam or flooding", inline=False)
     embed.add_field(name="Safety", value="No NSFW, hacking, doxxing", inline=False)
 
     await interaction.channel.send(embed=embed)
@@ -162,7 +156,7 @@ async def kick(interaction: discord.Interaction, member: discord.Member, reason:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.kick(reason=reason)
-    await interaction.response.send_message(f"👢 Kicked {member}")
+    await interaction.response.send_message(f"👢 Kicked {member}", ephemeral=True)
 
 @bot.tree.command(name="ban")
 async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
@@ -171,7 +165,7 @@ async def ban(interaction: discord.Interaction, member: discord.Member, reason: 
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
     await member.ban(reason=reason)
-    await interaction.response.send_message(f"⛔ Banned {member}")
+    await interaction.response.send_message(f"⛔ Banned {member}", ephemeral=True)
 
 @bot.tree.command(name="clear")
 async def clear(interaction: discord.Interaction, amount: int):
@@ -188,7 +182,10 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
     if not interaction.user.guild_permissions.moderate_members:
         return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
-    await interaction.response.send_message(f"⚠️ {member.mention} warned: {reason}")
+    await interaction.response.send_message(
+        f"⚠️ {member.mention} warned: {reason}",
+        ephemeral=True
+    )
 
 # ─────────────────────────────
 # RUN BOT
