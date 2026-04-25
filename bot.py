@@ -1,10 +1,7 @@
 import discord
 from discord.ext import commands
 import os
-import json
-import random
-import asyncio
-import datetime
+import sqlite3
 
 TOKEN = os.getenv("TOKEN")
 
@@ -12,30 +9,56 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-DATA_FILE = "levels.json"
+bot = commands.Bot(command_prefix="/", intents=intents)
 
 # ─────────────────────────────
-# DATA SYSTEM
+# DATABASE (STABLE)
 # ─────────────────────────────
-def load():
+conn = sqlite3.connect("rzn.db")
+c = conn.cursor()
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    messages INTEGER,
+    level INTEGER
+)
+""")
+
+conn.commit()
+
+def get_user(uid):
+    c.execute("SELECT * FROM users WHERE user_id=?", (uid,))
+    return c.fetchone()
+
+def create_user(uid):
+    c.execute("INSERT OR IGNORE INTO users VALUES (?, ?, ?)", (uid, 0, 0))
+    conn.commit()
+
+def update_user(uid, msgs, lvl):
+    c.execute("UPDATE users SET messages=?, level=? WHERE user_id=?", (msgs, lvl, uid))
+    conn.commit()
+
+def calc_level(msgs):
+    if msgs >= 1000: return 5
+    if msgs >= 600: return 4
+    if msgs >= 300: return 3
+    if msgs >= 150: return 2
+    if msgs >= 50: return 1
+    return 0
+
+# ─────────────────────────────
+# SAFE HELPER
+# ─────────────────────────────
+async def safe_send(channel, content=None, embed=None, view=None):
     try:
-        return json.load(open(DATA_FILE))
-    except:
-        return {}
-
-def save(data):
-    json.dump(data, open(DATA_FILE, "w"))
-
-def level_calc(xp):
-    return int(xp ** 0.5 / 10)
+        await channel.send(content=content, embed=embed, view=view)
+    except Exception as e:
+        print("Send error:", e)
 
 # ─────────────────────────────
-# XP SYSTEM
+# MESSAGE LEVEL SYSTEM
 # ─────────────────────────────
-cooldown = {}
-
 @bot.event
 async def on_message(message):
 
@@ -43,104 +66,59 @@ async def on_message(message):
         return
 
     uid = str(message.author.id)
-    data = load()
+    create_user(uid)
 
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 0}
+    c.execute("SELECT messages, level FROM users WHERE user_id=?", (uid,))
+    msgs, lvl = c.fetchone()
 
-    now = datetime.datetime.utcnow().timestamp()
+    msgs += 1
+    new_lvl = calc_level(msgs)
 
-    if uid in cooldown and now - cooldown[uid] < 5:
-        return
+    if new_lvl > lvl:
+        await message.channel.send(f"🎉 {message.author.mention} reached Level {new_lvl}!")
 
-    cooldown[uid] = now
-
-    data[uid]["xp"] += 5
-
-    new_level = level_calc(data[uid]["xp"])
-
-    if new_level > data[uid]["level"]:
-        data[uid]["level"] = new_level
-        await message.channel.send(f"🎉 {message.author.mention} reached Level {new_level}!")
-
-    save(data)
+    update_user(uid, msgs, new_lvl)
 
     await bot.process_commands(message)
 
 # ─────────────────────────────
-# CLIPRATE
-# ─────────────────────────────
-@bot.tree.command(name="cliprate")
-async def cliprate(interaction: discord.Interaction, clip: str):
-
-    data = load()
-    uid = str(interaction.user.id)
-
-    if uid not in data:
-        data[uid] = {"xp": 0, "level": 0}
-
-    score = random.randint(3, 10)
-    xp_gain = score * 12
-
-    data[uid]["xp"] += xp_gain
-    data[uid]["level"] = level_calc(data[uid]["xp"])
-
-    save(data)
-
-    embed = discord.Embed(title="🎬 Clip Rating", color=0x2ecc71)
-    embed.add_field(name="Clip", value=clip, inline=False)
-    embed.add_field(name="Rating", value=f"{score}/10")
-    embed.add_field(name="XP Gained", value=f"+{xp_gain}")
-
-    await interaction.response.send_message(embed=embed)
-
-# ─────────────────────────────
-# LEVEL
-# ─────────────────────────────
-@bot.tree.command(name="level")
-async def level(interaction: discord.Interaction, member: discord.Member = None):
-
-    data = load()
-    member = member or interaction.user
-    uid = str(member.id)
-
-    if uid not in data:
-        return await interaction.response.send_message("No data yet.")
-
-    d = data[uid]
-
-    await interaction.response.send_message(
-        f"{member.name} | Level {d['level']} | XP {d['xp']}"
-    )
-
-# ─────────────────────────────
-# LEADERBOARD TOP 15
+# LEADERBOARD
 # ─────────────────────────────
 @bot.tree.command(name="leaderboard")
 async def leaderboard(interaction: discord.Interaction):
 
-    data = load()
+    c.execute("SELECT * FROM users ORDER BY messages DESC LIMIT 15")
+    rows = c.fetchall()
 
-    top = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)[:15]
+    embed = discord.Embed(title="🏆 LEADERBOARD", color=0x2ecc71)
 
-    embed = discord.Embed(title="🏆 RZN LEADERBOARD", color=0x2ecc71)
-
-    medals = ["🥇", "🥈", "🥉"]
-
-    for i, (uid, d) in enumerate(top, start=1):
-        try:
-            user = await bot.fetch_user(int(uid))
-            medal = medals[i-1] if i <= 3 else f"#{i}"
-
-            embed.add_field(
-                name=f"{medal} {user.name}",
-                value=f"Level {d['level']} | XP {d['xp']}",
-                inline=False
-            )
-        except:
-            continue
+    for i, row in enumerate(rows, start=1):
+        user = await bot.fetch_user(int(row[0]))
+        embed.add_field(
+            name=f"#{i} {user.name}",
+            value=f"Messages: {row[1]} | Level: {row[2]}",
+            inline=False
+        )
 
     await interaction.response.send_message(embed=embed)
+
+# ─────────────────────────────
+# PROFILE
+# ─────────────────────────────
+@bot.tree.command(name="profile")
+async def profile(interaction: discord.Interaction, member: discord.Member = None):
+
+    member = member or interaction.user
+    uid = str(member.id)
+
+    create_user(uid)
+
+    c.execute("SELECT messages, level FROM users WHERE user_id=?", (uid,))
+    msgs, lvl = c.fetchone()
+
+    await interaction.response.send_message(
+        f"👤 {member.name}\nMessages: {msgs}\nLevel: {lvl}"
+    )
 
 # ─────────────────────────────
 # VERIFY SYSTEM
@@ -157,25 +135,20 @@ class VerifyView(discord.ui.View):
 
         if role:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message("✅ Verified!", ephemeral=True)
+
+        await interaction.response.send_message("Verified!", ephemeral=True)
 
 @bot.tree.command(name="setup_verify")
 async def setup_verify(interaction: discord.Interaction):
 
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("No permission", ephemeral=True)
-
     role = discord.utils.get(interaction.guild.roles, name="Member")
 
     if not role:
-        return await interaction.response.send_message("Create 'Member' role first", ephemeral=True)
+        role = await interaction.guild.create_role(name="Member")
 
-    await interaction.channel.send(
-        "Click to verify:",
-        view=VerifyView(role.id)
-    )
+    await interaction.channel.send("Click to verify:", view=VerifyView(role.id))
 
-    await interaction.response.send_message("Verify system active", ephemeral=True)
+    await interaction.response.send_message("Verify ready", ephemeral=True)
 
 # ─────────────────────────────
 # TICKETS
@@ -190,124 +163,88 @@ class TicketView(discord.ui.View):
             discord.SelectOption(label="Admin Application")
         ]
     )
-    async def callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+    async def select(self, interaction: discord.Interaction, select: discord.ui.Select):
+
+        await interaction.response.defer(ephemeral=True)
 
         guild = interaction.guild
-        cat = discord.utils.get(guild.categories, name="tickets")
+        user = interaction.user
 
-        if not cat:
-            cat = await guild.create_category("tickets")
+        category = discord.utils.get(guild.categories, name="tickets")
+        if not category:
+            category = await guild.create_category("tickets")
 
-        ch = await guild.create_text_channel(
-            name=f"ticket-{interaction.user.name}",
-            category=cat,
+        channel = await guild.create_text_channel(
+            name=f"ticket-{user.name}",
+            category=category,
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                interaction.user: discord.PermissionOverwrite(view_channel=True)
+                user: discord.PermissionOverwrite(view_channel=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True)
             }
         )
 
-        await ch.send("Support will assist you soon.")
-        await interaction.response.send_message(f"Created {ch.mention}", ephemeral=True)
+        t = select.values[0]
 
-@bot.tree.command(name="ticket_panel")
-async def ticket_panel(interaction: discord.Interaction):
+        if t == "Admin Application":
 
-    await interaction.channel.send("Open a ticket:", view=TicketView())
-    await interaction.response.send_message("Sent", ephemeral=True)
+            await safe_send(channel, """📋 ADMIN APPLICATION
 
-# ─────────────────────────────
-# COPY-READY AD (FIXED)
-# ─────────────────────────────
-@bot.tree.command(name="ad")
-async def ad(interaction: discord.Interaction):
+1. Username?
+2. Age?
+3. Why staff?
+4. Experience?
+5. Motivation?
+6. Questions?
 
-    ad_text = """━━━━━━━━━━━━━━━━━━━━━━━━━━
-JOIN RZN
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+Be detailed and honest.
+""")
 
-A Minecraft PvP and community server focused on improvement, competition, and social interaction.
+        else:
+            await safe_send(channel, f"🎫 {t} ticket created.")
 
-WHAT RZN IS ABOUT
-Structured community for PvP improvement and social interaction.
-
-FEATURES
-
-PvP Improvement
-• Share PvP clips for feedback
-• Improve mechanics and gameplay
-• Learn from others
-
-Competitive Environment
-• Weekly events and tournaments
-• 1v1 challenges
-• Community competitions
-
-Community
-• Active chat
-• Chill environment
-• Competitive + casual mix
-
-Systems
-• Ticket system
-• Verify system
-• Moderation tools
-
-ABOUT
-Balance between PvP and community.
-
-Owned by Shivayur
-
-Join:
-https://discord.gg/PtP7sHwKJF
-"""
-
-    await interaction.response.send_message(f"```text\n{ad_text}\n```")
+        await interaction.followup.send(f"Created {channel.mention}", ephemeral=True)
 
 # ─────────────────────────────
-# MODERATION
+# TIKTOK POST
 # ─────────────────────────────
-@bot.tree.command(name="kick")
+@bot.tree.command(name="tiktok")
+async def tiktok(interaction: discord.Interaction, link: str):
+
+    channel = discord.utils.get(interaction.guild.text_channels, name="announcements")
+
+    if not channel:
+        channel = await interaction.guild.create_text_channel("announcements")
+
+    embed = discord.Embed(title="📢 New TikTok", description=link)
+
+    await channel.send(embed=embed)
+
+    await interaction.response.send_message("Posted", ephemeral=True)
+
+# ─────────────────────────────
+# MODERATION (STAFF ONLY)
+# ─────────────────────────────
+@bot.tree.command(name="kick", default_member_permissions=discord.Permissions(kick_members=True))
 async def kick(interaction, member: discord.Member):
     await member.kick()
     await interaction.response.send_message("Kicked")
 
-@bot.tree.command(name="ban")
+@bot.tree.command(name="ban", default_member_permissions=discord.Permissions(ban_members=True))
 async def ban(interaction, member: discord.Member):
     await member.ban()
     await interaction.response.send_message("Banned")
 
-@bot.tree.command(name="clear")
-async def clear(interaction, amount: int):
-    await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message("Cleared")
-
 # ─────────────────────────────
-# MONTHLY WINNER
+# SAFE ERROR HANDLER
 # ─────────────────────────────
-async def monthly():
-
-    await bot.wait_until_ready()
-
-    while not bot.is_closed():
-
-        now = datetime.datetime.utcnow()
-
-        if now.day == 1 and now.hour == 0:
-
-            data = load()
-            top = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)
-
-            if top:
-                user = await bot.fetch_user(int(top[0][0]))
-                ch = discord.utils.get(bot.guilds[0].text_channels, name="leaderboard")
-
-                if ch:
-                    await ch.send(f"🏆 Monthly Winner: {user.mention}")
-
-            await asyncio.sleep(86400)
-
-        await asyncio.sleep(3600)
+@bot.event
+async def on_app_command_error(interaction, error):
+    print(error)
+    try:
+        await interaction.response.send_message("⚠️ Error occurred.", ephemeral=True)
+    except:
+        pass
 
 # ─────────────────────────────
 # READY
@@ -315,10 +252,7 @@ async def monthly():
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    bot.loop.create_task(monthly())
-    print(f"Bot online: {bot.user}")
+    print(f"Stable bot online: {bot.user}")
 
-# ─────────────────────────────
-# RUN
 # ─────────────────────────────
 bot.run(TOKEN)
