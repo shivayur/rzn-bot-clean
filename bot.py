@@ -11,14 +11,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"Bot online als {bot.user}")
 
-@bot.command()
-async def hello(ctx):
-    await ctx.send("Hello!")
+@bot.tree.command(name="hello", description="Say hello")
+async def hello(interaction: discord.Interaction):
+    await interaction.response.send_message("👋 Hello!")
 
-@bot.command()
-async def ping(ctx):
-    await ctx.send("Pong!")
+@bot.tree.command(name="ping", description="Check bot latency")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong!")
 
 bot.run(TOKEN)
