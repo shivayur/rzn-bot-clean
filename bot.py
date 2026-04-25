@@ -32,13 +32,10 @@ def level_calc(xp):
     return int(xp ** 0.5 / 10)
 
 # ─────────────────────────────
-# ANTI SPAM XP
+# XP SYSTEM
 # ─────────────────────────────
 cooldown = {}
 
-# ─────────────────────────────
-# XP SYSTEM
-# ─────────────────────────────
 @bot.event
 async def on_message(message):
 
@@ -71,7 +68,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ─────────────────────────────
-# CLIPRATE SYSTEM
+# CLIPRATE
 # ─────────────────────────────
 @bot.tree.command(name="cliprate")
 async def cliprate(interaction: discord.Interaction, clip: str):
@@ -93,12 +90,12 @@ async def cliprate(interaction: discord.Interaction, clip: str):
     embed = discord.Embed(title="🎬 Clip Rating", color=0x2ecc71)
     embed.add_field(name="Clip", value=clip, inline=False)
     embed.add_field(name="Rating", value=f"{score}/10")
-    embed.add_field(name="XP", value=f"+{xp_gain}")
+    embed.add_field(name="XP Gained", value=f"+{xp_gain}")
 
     await interaction.response.send_message(embed=embed)
 
 # ─────────────────────────────
-# LEVEL COMMAND
+# LEVEL
 # ─────────────────────────────
 @bot.tree.command(name="level")
 async def level(interaction: discord.Interaction, member: discord.Member = None):
@@ -112,11 +109,9 @@ async def level(interaction: discord.Interaction, member: discord.Member = None)
 
     d = data[uid]
 
-    embed = discord.Embed(title=f"{member.name}", color=0x2ecc71)
-    embed.add_field(name="Level", value=d["level"])
-    embed.add_field(name="XP", value=d["xp"])
-
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(
+        f"{member.name} | Level {d['level']} | XP {d['xp']}"
+    )
 
 # ─────────────────────────────
 # LEADERBOARD TOP 15
@@ -148,7 +143,7 @@ async def leaderboard(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ─────────────────────────────
-# VERIFY SYSTEM (SETUP + BUTTON)
+# VERIFY SYSTEM
 # ─────────────────────────────
 class VerifyView(discord.ui.View):
     def __init__(self, role_id):
@@ -180,10 +175,10 @@ async def setup_verify(interaction: discord.Interaction):
         view=VerifyView(role.id)
     )
 
-    await interaction.response.send_message("Setup done", ephemeral=True)
+    await interaction.response.send_message("Verify system active", ephemeral=True)
 
 # ─────────────────────────────
-# TICKETS SYSTEM
+# TICKETS
 # ─────────────────────────────
 class TicketView(discord.ui.View):
 
@@ -195,7 +190,7 @@ class TicketView(discord.ui.View):
             discord.SelectOption(label="Admin Application")
         ]
     )
-    async def select(self, interaction: discord.Interaction, select: discord.ui.Select):
+    async def callback(self, interaction: discord.Interaction, select: discord.ui.Select):
 
         guild = interaction.guild
         cat = discord.utils.get(guild.categories, name="tickets")
@@ -212,34 +207,62 @@ class TicketView(discord.ui.View):
             }
         )
 
-        await ch.send("Support will be with you soon.")
+        await ch.send("Support will assist you soon.")
         await interaction.response.send_message(f"Created {ch.mention}", ephemeral=True)
 
 @bot.tree.command(name="ticket_panel")
 async def ticket_panel(interaction: discord.Interaction):
 
-    await interaction.channel.send(
-        "Open a ticket:",
-        view=TicketView()
-    )
-
-    await interaction.response.send_message("Panel sent", ephemeral=True)
+    await interaction.channel.send("Open a ticket:", view=TicketView())
+    await interaction.response.send_message("Sent", ephemeral=True)
 
 # ─────────────────────────────
-# AD COMMAND
+# COPY-READY AD (FIXED)
 # ─────────────────────────────
 @bot.tree.command(name="ad")
 async def ad(interaction: discord.Interaction):
 
-    embed = discord.Embed(
-        title="JOIN RZN",
-        description="PvP & Community Server",
-        color=0x2ecc71
-    )
+    ad_text = """━━━━━━━━━━━━━━━━━━━━━━━━━━
+JOIN RZN
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    embed.add_field(name="Invite", value="https://discord.gg/PtP7sHwKJF")
+A Minecraft PvP and community server focused on improvement, competition, and social interaction.
 
-    await interaction.response.send_message(embed=embed)
+WHAT RZN IS ABOUT
+Structured community for PvP improvement and social interaction.
+
+FEATURES
+
+PvP Improvement
+• Share PvP clips for feedback
+• Improve mechanics and gameplay
+• Learn from others
+
+Competitive Environment
+• Weekly events and tournaments
+• 1v1 challenges
+• Community competitions
+
+Community
+• Active chat
+• Chill environment
+• Competitive + casual mix
+
+Systems
+• Ticket system
+• Verify system
+• Moderation tools
+
+ABOUT
+Balance between PvP and community.
+
+Owned by Shivayur
+
+Join:
+https://discord.gg/PtP7sHwKJF
+"""
+
+    await interaction.response.send_message(f"```text\n{ad_text}\n```")
 
 # ─────────────────────────────
 # MODERATION
@@ -259,14 +282,10 @@ async def clear(interaction, amount: int):
     await interaction.channel.purge(limit=amount)
     await interaction.response.send_message("Cleared")
 
-@bot.tree.command(name="warn")
-async def warn(interaction, member: discord.Member, reason: str):
-    await interaction.response.send_message(f"{member.mention} warned: {reason}")
-
 # ─────────────────────────────
 # MONTHLY WINNER
 # ─────────────────────────────
-async def monthly_loop():
+async def monthly():
 
     await bot.wait_until_ready()
 
@@ -281,7 +300,6 @@ async def monthly_loop():
 
             if top:
                 user = await bot.fetch_user(int(top[0][0]))
-
                 ch = discord.utils.get(bot.guilds[0].text_channels, name="leaderboard")
 
                 if ch:
@@ -297,7 +315,7 @@ async def monthly_loop():
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    bot.loop.create_task(monthly_loop())
+    bot.loop.create_task(monthly())
     print(f"Bot online: {bot.user}")
 
 # ─────────────────────────────
