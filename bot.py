@@ -10,15 +10,19 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ─────────────────────────────
-# BOT READY
+# BOT READY + SLASH SYNC
 # ─────────────────────────────
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"Bot online als {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Bot online als {bot.user}")
+        print(f"Synced {len(synced)} slash commands")
+    except Exception as e:
+        print(f"Sync error: {e}")
 
 # ─────────────────────────────
-# SLASH COMMANDS
+# BASIC COMMANDS
 # ─────────────────────────────
 
 @bot.tree.command(name="hello", description="Say hello")
@@ -34,63 +38,69 @@ async def rules(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="📜 Server Rules",
-        description="Please follow the rules below to keep the server safe and fun.",
+        description="Please follow these rules to keep the server safe.",
         color=0x2ecc71
     )
 
     embed.add_field(
         name="🟢 Behavior & Respect",
-        value=(
-            "• Be respectful to everyone\n"
-            "• No bullying, hate, or toxicity\n"
-            "• Follow staff instructions\n"
-            "• Respect moderators"
-        ),
+        value="Be respectful, no bullying or toxicity, follow staff",
         inline=False
     )
 
     embed.add_field(
         name="🟢 Communication",
-        value=(
-            "• English only in chat\n"
-            "• Stay on topic in channels\n"
-            "• No mic spam or loud/annoying audio\n"
-            "• No unnecessary pings"
-        ),
+        value="English only, stay on topic, no spam or mic spam",
         inline=False
     )
 
     embed.add_field(
-        name="🟡 Spam & Activity",
-        value=(
-            "• No spam or floods\n"
-            "• No abuse of bots\n"
-            "• Don’t spam permission requests"
-        ),
+        name="🔴 Safety",
+        value="No NSFW, racism, doxxing, threats, hacking or raids",
         inline=False
     )
 
-    embed.add_field(
-        name="🔴 Safety Rules",
-        value=(
-            "• No NSFW, illegal, or harmful content\n"
-            "• No racism or discrimination\n"
-            "• No doxxing or sharing private info\n"
-            "• No threats, hacking, DDOS, or raids"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📩 Reports",
-        value="Report issues directly to staff or moderators.",
-        inline=False
-    )
-
-    embed.set_footer(text="Follow Discord Terms of Service at all times.")
+    embed.set_footer(text="Follow Discord Terms of Service")
 
     await interaction.channel.send(embed=embed)
     await interaction.response.send_message("✅ Rules posted!", ephemeral=True)
+
+# ─────────────────────────────
+# MODERATION COMMANDS
+# ─────────────────────────────
+
+@bot.tree.command(name="kick", description="Kick a member")
+async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+    if not interaction.user.guild_permissions.kick_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    await member.kick(reason=reason)
+    await interaction.response.send_message(f"👢 {member} kicked. Reason: {reason}")
+
+@bot.tree.command(name="ban", description="Ban a member")
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+    if not interaction.user.guild_permissions.ban_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f"⛔ {member} banned. Reason: {reason}")
+
+@bot.tree.command(name="clear", description="Delete messages")
+async def clear(interaction: discord.Interaction, amount: int):
+    if not interaction.user.guild_permissions.manage_messages:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    await interaction.channel.purge(limit=amount)
+    await interaction.response.send_message(f"🧹 Deleted {amount} messages", ephemeral=True)
+
+@bot.tree.command(name="warn", description="Warn a user")
+async def warn(interaction: discord.Interaction, member: discord.Member, reason: str):
+    if not interaction.user.guild_permissions.moderate_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
+    await interaction.response.send_message(
+        f"⚠️ {member.mention} warned. Reason: {reason}"
+    )
 
 # ─────────────────────────────
 # RUN BOT
