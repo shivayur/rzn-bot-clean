@@ -1,16 +1,39 @@
 import discord
 from discord.ext import commands
-from config import TOKEN
-from db import *
-from safe import safe
+import sqlite3
 
+# ─────────────────────────────
+# 🔐 TOKEN (HIER INVULLEN)
+# ─────────────────────────────
+TOKEN = "MTQ5NzYzODkwNDk5ODY2MjE3NA.G8cSKH.cyWE6kjMTKEkDkRPoelTYT4xCm0XwCTMpK8Ssw"
+
+# ─────────────────────────────
+# INTENTS
+# ─────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-# ───────── LEVEL SYSTEM ─────────
+# ─────────────────────────────
+# DATABASE
+# ─────────────────────────────
+conn = sqlite3.connect("rzn.db", check_same_thread=False)
+c = conn.cursor()
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    messages INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 0
+)
+""")
+conn.commit()
+
+# ─────────────────────────────
+# LEVEL SYSTEM
+# ─────────────────────────────
 def get_level(msgs):
     if msgs >= 1000: return 5
     if msgs >= 600: return 4
@@ -19,7 +42,9 @@ def get_level(msgs):
     if msgs >= 50: return 1
     return 0
 
-# ───────── MESSAGE TRACKING ─────────
+# ─────────────────────────────
+# MESSAGE TRACKING
+# ─────────────────────────────
 @bot.event
 async def on_message(message):
 
@@ -27,11 +52,12 @@ async def on_message(message):
         return
 
     uid = str(message.author.id)
-    create_user(uid)
 
-    user = get_user(uid)
-    msgs = user[1]
-    lvl = user[2]
+    c.execute("INSERT OR IGNORE INTO users VALUES (?, 0, 0)", (uid,))
+    conn.commit()
+
+    c.execute("SELECT messages, level FROM users WHERE user_id=?", (uid,))
+    msgs, lvl = c.fetchone()
 
     msgs += 1
     new_lvl = get_level(msgs)
@@ -39,15 +65,16 @@ async def on_message(message):
     if new_lvl > lvl:
         await message.channel.send(f"🎉 {message.author.mention} reached Level {new_lvl}")
 
-    update_user(uid, msgs, new_lvl)
+    c.execute("UPDATE users SET messages=?, level=? WHERE user_id=?", (msgs, new_lvl, uid))
+    conn.commit()
 
     await bot.process_commands(message)
 
-# ───────── LEADERBOARD ─────────
+# ─────────────────────────────
+# LEADERBOARD
+# ─────────────────────────────
 @bot.tree.command(name="leaderboard")
 async def leaderboard(interaction: discord.Interaction):
-
-    await interaction.response.defer()
 
     c.execute("SELECT * FROM users ORDER BY messages DESC LIMIT 15")
     rows = c.fetchall()
@@ -56,51 +83,197 @@ async def leaderboard(interaction: discord.Interaction):
 
     for i, r in enumerate(rows, 1):
         user = await bot.fetch_user(int(r[0]))
-        embed.add_field(name=f"#{i} {user.name}", value=f"{r[1]} msgs | lvl {r[2]}", inline=False)
+        embed.add_field(
+            name=f"#{i} {user.name}",
+            value=f"{r[1]} messages | Level {r[2]}",
+            inline=False
+        )
 
-    await interaction.followup.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-# ───────── VERIFY (SAFE) ─────────
-class Verify(discord.ui.View):
+# ─────────────────────────────
+# PROFILE
+# ─────────────────────────────
+@bot.tree.command(name="profile")
+async def profile(interaction: discord.Interaction, member: discord.Member = None):
+
+    member = member or interaction.user
+    uid = str(member.id)
+
+    c.execute("SELECT messages, level FROM users WHERE user_id=?", (uid,))
+    data = c.fetchone()
+
+    if not data:
+        return await interaction.response.send_message("No data yet.")
+
+    await interaction.response.send_message(
+        f"👤 {member.name}\nMessages: {data[0]}\nLevel: {data[1]}"
+    )
+
+# ─────────────────────────────
+# VERIFY SYSTEM
+# ─────────────────────────────
+class VerifyView(discord.ui.View):
+
     def __init__(self, role_id):
         super().__init__()
         self.role_id = role_id
 
     @discord.ui.button(label="Verify", style=discord.ButtonStyle.green)
-    async def verify(self, interaction, button):
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         role = interaction.guild.get_role(self.role_id)
 
         if role:
             await interaction.user.add_roles(role)
 
-        await interaction.response.send_message("Verified", ephemeral=True)
+        await interaction.response.send_message("Verified!", ephemeral=True)
 
 @bot.tree.command(name="setup_verify")
-async def setup_verify(interaction):
+async def setup_verify(interaction: discord.Interaction):
 
     role = discord.utils.get(interaction.guild.roles, name="Member")
 
     if not role:
         role = await interaction.guild.create_role(name="Member")
 
-    await interaction.channel.send("Click verify", view=Verify(role.id))
+    await interaction.channel.send("Click to verify:", view=VerifyView(role.id))
 
-    await interaction.response.send_message("OK", ephemeral=True)
+    await interaction.response.send_message("Verify ready", ephemeral=True)
 
-# ───────── ERROR HANDLER (CRASH STOPPER) ─────────
-@bot.tree.error
-async def on_error(interaction, error):
-    print("ERROR:", error)
-    try:
-        await interaction.response.send_message("⚠️ Error occurred.", ephemeral=True)
-    except:
-        pass
+# ─────────────────────────────
+# TICKETS
+# ─────────────────────────────
+class TicketView(discord.ui.View):
 
-# ───────── READY ─────────
+    @discord.ui.select(
+        placeholder="Select ticket type",
+        options=[
+            discord.SelectOption(label="Support"),
+            discord.SelectOption(label="Report"),
+            discord.SelectOption(label="Admin Application")
+        ]
+    )
+    async def select(self, interaction: discord.Interaction, select: discord.ui.Select):
+
+        guild = interaction.guild
+        user = interaction.user
+
+        category = discord.utils.get(guild.categories, name="tickets")
+        if not category:
+            category = await guild.create_category("tickets")
+
+        channel = await guild.create_text_channel(
+            name=f"ticket-{user.name}",
+            category=category,
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                user: discord.PermissionOverwrite(view_channel=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True)
+            }
+        )
+
+        choice = select.values[0]
+
+        # ─────────────────────────────
+        # 💼 ADMIN APPLICATION (IMPROVED)
+        # ─────────────────────────────
+        if choice == "Admin Application":
+
+            await channel.send(
+"""📋 **RZN STAFF APPLICATION**
+
+Thank you for applying to the RZN Staff Team.
+
+Please answer all questions clearly, honestly, and in detail.
+This application will be reviewed by the management team.
+
+━━━━━━━━━━━━━━━━━━
+🧾 PERSONAL INFORMATION
+━━━━━━━━━━━━━━━━━━
+
+1. What is your in-game username?
+2. What is your age?
+
+━━━━━━━━━━━━━━━━━━
+🧠 EXPERIENCE
+━━━━━━━━━━━━━━━━━━
+
+3. Do you have any previous staff experience? Explain.
+4. Have you moderated a Discord/Minecraft server before?
+
+━━━━━━━━━━━━━━━━━━
+💡 MOTIVATION
+━━━━━━━━━━━━━━━━━━
+
+5. Why do you want to become staff on RZN?
+6. What makes a good staff member in your opinion?
+
+━━━━━━━━━━━━━━━━━━
+⚖️ SITUATION QUESTIONS
+━━━━━━━━━━━━━━━━━━
+
+7. A player breaks a rule but says it was a mistake. What do you do?
+8. Two players are arguing. How do you handle it?
+
+━━━━━━━━━━━━━━━━━━
+⏳ ACTIVITY
+━━━━━━━━━━━━━━━━━━
+
+9. How active can you be?
+
+━━━━━━━━━━━━━━━━━━
+❓ FINAL QUESTION
+━━━━━━━━━━━━━━━━━━
+
+10. Any questions for us?
+
+━━━━━━━━━━━━━━━━━━
+📌 Be honest. Take your time.
+"""
+            )
+
+        else:
+            await channel.send(f"🎫 {choice} ticket created.")
+
+        await interaction.response.send_message(f"Created {channel.mention}", ephemeral=True)
+
+# ─────────────────────────────
+# TIKTOK SYSTEM
+# ─────────────────────────────
+@bot.tree.command(name="tiktok")
+async def tiktok(interaction: discord.Interaction, link: str):
+
+    channel = discord.utils.get(interaction.guild.text_channels, name="announcements")
+
+    if not channel:
+        channel = await interaction.guild.create_text_channel("announcements")
+
+    embed = discord.Embed(title="📢 New TikTok", description=link)
+
+    await channel.send(embed=embed)
+
+    await interaction.response.send_message("Posted", ephemeral=True)
+
+# ─────────────────────────────
+# MODERATION
+# ─────────────────────────────
+@bot.tree.command(name="kick", default_member_permissions=discord.Permissions(kick_members=True))
+async def kick(interaction, member: discord.Member):
+    await member.kick()
+    await interaction.response.send_message("Kicked")
+
+@bot.tree.command(name="ban", default_member_permissions=discord.Permissions(ban_members=True))
+async def ban(interaction, member: discord.Member):
+    await member.ban()
+    await interaction.response.send_message("Banned")
+
+# ─────────────────────────────
+# READY
+# ─────────────────────────────
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("BOT STABLE ONLINE")
+    print("RZN bot online")
 
 bot.run(TOKEN)
