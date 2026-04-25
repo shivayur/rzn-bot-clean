@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 
 # ─────────────────────────────
-# 🔐 TOKEN (VEILIG)
+# 🔐 TOKEN (ENV SAFE)
 # ─────────────────────────────
 TOKEN = os.getenv("TOKEN")
 
@@ -17,7 +17,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # ─────────────────────────────
-# VERIFY
+# VERIFY COMMAND
 # ─────────────────────────────
 @bot.tree.command(name="verify")
 async def verify(interaction: discord.Interaction):
@@ -50,62 +50,40 @@ async def tiktok(interaction: discord.Interaction, link: str):
 
     await channel.send(embed=embed)
 
-    await interaction.response.send_message("Posted in 📺│content", ephemeral=True)
+    await interaction.response.send_message("Posted!", ephemeral=True)
 
 # ─────────────────────────────
-# MODERATION
+# PERMISSION SAFE CHECK (FIX VOOR JOUW ERROR)
 # ─────────────────────────────
-@bot.tree.command(name="kick", default_member_permissions=discord.Permissions(kick_members=True))
+@bot.tree.command(name="kick")
 async def kick(interaction: discord.Interaction, member: discord.Member):
+
+    if not interaction.user.guild_permissions.kick_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
     await member.kick()
     await interaction.response.send_message(f"Kicked {member.name}")
 
-@bot.tree.command(name="ban", default_member_permissions=discord.Permissions(ban_members=True))
+# ─────────────────────────────
+@bot.tree.command(name="ban")
 async def ban(interaction: discord.Interaction, member: discord.Member):
+
+    if not interaction.user.guild_permissions.ban_members:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
+
     await member.ban()
     await interaction.response.send_message(f"Banned {member.name}")
 
 # ─────────────────────────────
-# SERVER SETUP
-# ─────────────────────────────
-@bot.tree.command(name="setup")
-@discord.app_commands.default_permissions(administrator=True)
-async def setup(interaction: discord.Interaction):
+@bot.tree.command(name="clear")
+async def clear(interaction: discord.Interaction, amount: int):
 
-    guild = interaction.guild
+    if not interaction.user.guild_permissions.manage_messages:
+        return await interaction.response.send_message("❌ No permission", ephemeral=True)
 
-    # ── ROLE ──
-    member_role = discord.utils.get(guild.roles, name="Member")
-    if not member_role:
-        member_role = await guild.create_role(name="Member")
+    await interaction.channel.purge(limit=amount)
 
-    # ── CHANNELS ──
-    content = discord.utils.get(guild.text_channels, name="📺│content")
-    if not content:
-        await guild.create_text_channel("📺│content")
-
-    announcements = discord.utils.get(guild.text_channels, name="📢│announcements")
-    if not announcements:
-        await guild.create_text_channel("📢│announcements")
-
-    logs = discord.utils.get(guild.text_channels, name="🧾│logs")
-    if not logs:
-        await guild.create_text_channel("🧾│logs")
-
-    # ── CATEGORY ──
-    category = discord.utils.get(guild.categories, name="🎫 tickets")
-    if not category:
-        await guild.create_category("🎫 tickets")
-
-    await interaction.response.send_message(
-        "✅ Setup complete:\n"
-        "📺│content\n"
-        "📢│announcements\n"
-        "🧾│logs\n"
-        "🎫 tickets category\n"
-        "Member role created",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"Cleared {amount} messages", ephemeral=True)
 
 # ─────────────────────────────
 # READY
@@ -113,6 +91,6 @@ async def setup(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("RZN stable bot online")
+    print("RZN compatible bot online")
 
 bot.run(TOKEN)
