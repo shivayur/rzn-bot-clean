@@ -4,6 +4,9 @@ import os
 
 TOKEN = os.getenv("TOKEN")
 
+# 🔐 ZET HIER JOUW DISCORD USER ID
+OWNER_ID = 1255555600293564417  # ← vervang dit
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -11,7 +14,19 @@ intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # ─────────────────────────────
-# VERIFY BUTTON
+# PERMISSION CHECKS
+# ─────────────────────────────
+def is_owner(interaction: discord.Interaction):
+    return interaction.user.id == OWNER_ID
+
+def is_admin_or_owner(interaction: discord.Interaction):
+    return (
+        interaction.user.id == OWNER_ID or
+        interaction.user.guild_permissions.administrator
+    )
+
+# ─────────────────────────────
+# VERIFY SYSTEM
 # ─────────────────────────────
 class VerifyView(discord.ui.View):
     def __init__(self):
@@ -29,28 +44,28 @@ class VerifyView(discord.ui.View):
         await interaction.response.send_message("✅ Verified!", ephemeral=True)
 
 # ─────────────────────────────
-# SETUP COMMAND (FULL SERVER SETUP)
+# SETUP (OWNER ONLY)
 # ─────────────────────────────
 @bot.tree.command(name="setup")
+@discord.app_commands.check(is_owner)
 async def setup(interaction: discord.Interaction):
 
     guild = interaction.guild
 
-    # channels
     for name in ["welcome", "📺│content", "🧾│logs"]:
         if not discord.utils.get(guild.text_channels, name=name):
             await guild.create_text_channel(name)
 
-    # role
     if not discord.utils.get(guild.roles, name="Member"):
         await guild.create_role(name="Member")
 
-    await interaction.response.send_message("✅ Server setup complete", ephemeral=True)
+    await interaction.response.send_message("✅ Setup complete", ephemeral=True)
 
 # ─────────────────────────────
-# SETUP VERIFY
+# VERIFY SETUP
 # ─────────────────────────────
 @bot.tree.command(name="setup_verify")
+@discord.app_commands.check(is_admin_or_owner)
 async def setup_verify(interaction: discord.Interaction):
 
     embed = discord.Embed(
@@ -70,12 +85,11 @@ async def ad(interaction: discord.Interaction):
 
     ad_text = (
         "**JOIN RZN**\n\n"
-        "RZN is a competitive PvP community server where players improve and share clips.\n\n"
+        "RZN is a competitive PvP community server.\n\n"
         "- Custom bot\n"
         "- Texture packs\n"
         "- Events\n"
-        "- PvP clips & tips\n"
-        "- Active community\n\n"
+        "- PvP clips & tips\n\n"
         "Owned by Shivayur\n\n"
         "https://discord.gg/PtP7sHwKJF"
     )
@@ -86,6 +100,7 @@ async def ad(interaction: discord.Interaction):
 # CONTENT
 # ─────────────────────────────
 @bot.tree.command(name="post")
+@discord.app_commands.check(is_admin_or_owner)
 async def post(interaction: discord.Interaction, link: str):
 
     channel = discord.utils.get(interaction.guild.text_channels, name="📺│content")
@@ -100,34 +115,28 @@ async def post(interaction: discord.Interaction, link: str):
 # MODERATION
 # ─────────────────────────────
 @bot.tree.command(name="kick")
+@discord.app_commands.check(is_admin_or_owner)
 async def kick(interaction: discord.Interaction, member: discord.Member):
-
-    if not interaction.user.guild_permissions.kick_members:
-        return await interaction.response.send_message("No permission", ephemeral=True)
 
     await member.kick()
     await interaction.response.send_message(f"Kicked {member}")
 
 @bot.tree.command(name="ban")
+@discord.app_commands.check(is_admin_or_owner)
 async def ban(interaction: discord.Interaction, member: discord.Member):
-
-    if not interaction.user.guild_permissions.ban_members:
-        return await interaction.response.send_message("No permission", ephemeral=True)
 
     await member.ban()
     await interaction.response.send_message(f"Banned {member}")
 
 @bot.tree.command(name="clear")
+@discord.app_commands.check(is_admin_or_owner)
 async def clear(interaction: discord.Interaction, amount: int):
-
-    if not interaction.user.guild_permissions.manage_messages:
-        return await interaction.response.send_message("No permission", ephemeral=True)
 
     await interaction.channel.purge(limit=amount)
     await interaction.response.send_message("Cleared", ephemeral=True)
 
 # ─────────────────────────────
-# WELCOME + AUTO ROLE + LOGS + COUNTER
+# WELCOME + ROLE + LOGS + COUNTER
 # ─────────────────────────────
 @bot.event
 async def on_member_join(member):
@@ -143,18 +152,14 @@ async def on_member_join(member):
     if not logs:
         logs = await guild.create_text_channel("🧾│logs")
 
-    # welcome message
     await welcome.send(f"👋 Welcome {member.mention}!")
 
-    # auto role
     role = discord.utils.get(guild.roles, name="Member")
     if role:
         await member.add_roles(role)
 
-    # logs
     await logs.send(f"📥 {member} joined")
 
-    # counter
     counter = discord.utils.get(guild.voice_channels, name="👥 Members")
 
     if not counter:
@@ -176,11 +181,23 @@ async def on_member_remove(member):
         await counter.edit(name=f"👥 Members: {guild.member_count}")
 
 # ─────────────────────────────
+# ERROR HANDLER
+# ─────────────────────────────
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+
+    if isinstance(error, discord.app_commands.errors.CheckFailure):
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.",
+            ephemeral=True
+        )
+
+# ─────────────────────────────
 # READY
 # ─────────────────────────────
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"{bot.user} online (PRO STABLE BOT)")
+    print(f"{bot.user} online (OWNER SYSTEM ACTIVE)")
 
 bot.run(TOKEN)
